@@ -247,7 +247,7 @@ Respond in JSON:
    */
   calculateExtractionMetrics(
     extracted: ExtractedClaim,
-    groundTruth?: Partial<ExtractedClaim>
+    _groundTruth?: Partial<ExtractedClaim>
   ): {
     fieldCoverage: number;
     avgConfidence: number;
@@ -318,7 +318,7 @@ Respond in JSON:
     const grade = this.scoreToGrade(overallScore);
 
     // Determine review priority
-    const hasCriticalIssues = parsed.criticalIssues && parsed.criticalIssues.length > 0;
+    const hasCriticalIssues = (parsed.criticalIssues && parsed.criticalIssues.length > 0) ?? false;
     const reviewPriority = this.determineReviewPriority(overallScore, hasCriticalIssues);
 
     return {

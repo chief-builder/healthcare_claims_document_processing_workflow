@@ -17,7 +17,7 @@ export interface FieldInference {
   reasoning: string;
 }
 
-export interface CorrectionResult {
+export interface LLMCorrectionResult {
   success: boolean;
   correctedValue: string | null;
   confidence: number;
@@ -307,7 +307,7 @@ Respond in JSON format:
     currentValue: string,
     validationError: string,
     context: string
-  ): Promise<CorrectionResult> {
+  ): Promise<LLMCorrectionResult> {
     const prompt = `You are correcting an invalid value from a healthcare claim document.
 
 Field: ${fieldName}

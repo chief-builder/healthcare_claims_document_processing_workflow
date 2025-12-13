@@ -1,5 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { getConfig } from '../config/index.js';
 import { logger } from '../utils/index.js';
 
 /**
@@ -101,17 +99,10 @@ class LocalEmbedding {
 
 export class EmbeddingsService {
   private localEmbedding: LocalEmbedding;
-  private client: Anthropic;
-  private model: string;
   private embeddingModel: string;
 
   constructor() {
-    const config = getConfig();
     this.localEmbedding = new LocalEmbedding(384);
-    this.client = new Anthropic({
-      apiKey: config.anthropic.apiKey,
-    });
-    this.model = config.anthropic.model;
     this.embeddingModel = 'local-384'; // Or 'openai-ada-002', 'cohere-embed', etc.
   }
 

@@ -14,7 +14,7 @@ export type {
 } from '../services/ocr.js';
 export type {
   FieldInference,
-  CorrectionResult as LLMCorrectionResult,
+  LLMCorrectionResult,
   ExtractionContext,
 } from '../services/llm.js';
 export type { DocumentMetadata, StoredDocument } from '../services/storage.js';

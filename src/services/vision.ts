@@ -9,7 +9,6 @@ import {
   Diagnosis,
   ServiceLine,
   ClaimTotals,
-  Provenance,
   BoundingBox,
 } from '../models/index.js';
 import { logger } from '../utils/index.js';
@@ -178,7 +177,7 @@ Respond in JSON:
       const parsed = JSON.parse(this.extractJSON(content.text));
 
       // Convert regions to PageRegion format
-      const regions: PageRegion[] = (parsed.regions ?? []).map((r: { type: string; approximateLocation: string }, i: number) => ({
+      const regions: PageRegion[] = (parsed.regions ?? []).map((r: { type: string; approximateLocation: string }) => ({
         type: r.type as PageRegion['type'],
         page: 1,
         boundingBox: this.locationToBoundingBox(r.approximateLocation),
@@ -822,7 +821,7 @@ Respond in JSON:
   }
 
   private async detectElements(
-    imageBuffer: Buffer,
+    _imageBuffer: Buffer,
     layout: LayoutAnalysis
   ): Promise<DetectedElement[]> {
     const elements: DetectedElement[] = [];

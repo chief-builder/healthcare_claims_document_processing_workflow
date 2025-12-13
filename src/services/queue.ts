@@ -1,4 +1,4 @@
-import { Priority, ClaimStatus } from '../models/index.js';
+import { Priority } from '../models/index.js';
 import { logger } from '../utils/index.js';
 
 export interface ReviewQueueItem {

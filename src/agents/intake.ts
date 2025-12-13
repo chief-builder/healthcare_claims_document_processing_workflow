@@ -7,7 +7,7 @@ import {
   Priority,
   createClaimRecord,
 } from '../models/index.js';
-import { getStorageService, getLLMService } from '../services/index.js';
+import { getStorageService } from '../services/index.js';
 import { calculateDocumentHash } from '../utils/index.js';
 import { logger } from '../utils/index.js';
 

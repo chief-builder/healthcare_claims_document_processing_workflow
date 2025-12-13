@@ -7,7 +7,6 @@ import {
   getLLMService,
   getStorageService,
   OCRResult,
-  OCRPage,
   Table,
   Checkbox,
 } from '../services/index.js';

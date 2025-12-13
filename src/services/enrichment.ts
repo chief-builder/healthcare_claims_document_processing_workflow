@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getConfig } from '../config/index.js';
-import { Address, ExtractedClaim, Provider, Patient } from '../models/index.js';
+import { Address, ExtractedClaim, Provider } from '../models/index.js';
 import { logger } from '../utils/index.js';
 
 /**
@@ -378,7 +378,7 @@ export class CurrencyNormalizer {
       };
     }
 
-    const original = value;
+    const originalStr = value;
 
     // Remove currency symbols and commas
     let cleaned = value.replace(/[$,]/g, '').trim();
@@ -392,7 +392,7 @@ export class CurrencyNormalizer {
 
     if (isNaN(parsed)) {
       return {
-        original: value,
+        original: 0,
         normalized: 0,
         confidence: 0,
         changes: ['Could not parse currency value'],
@@ -403,10 +403,10 @@ export class CurrencyNormalizer {
     const normalized = Math.round(parsed * 100) / 100;
 
     return {
-      original: value,
+      original: parsed,
       normalized,
       confidence: 0.95,
-      changes: original !== String(normalized) ? [`"${original}" → ${normalized}`] : [],
+      changes: originalStr !== String(normalized) ? [`"${originalStr}" → ${normalized}`] : [],
       source: 'rule',
     };
   }
@@ -619,7 +619,6 @@ Respond in JSON:
 export class EnrichmentService {
   private addressNormalizer = new AddressNormalizer();
   private dateNormalizer = new DateNormalizer();
-  private phoneNormalizer = new PhoneNormalizer();
   private currencyNormalizer = new CurrencyNormalizer();
   private codeNormalizer = new CodeNormalizer();
   private externalEnrichment = new ExternalEnrichment();
@@ -854,12 +853,3 @@ export function getEnrichmentService(): EnrichmentService {
   return enrichmentServiceInstance;
 }
 
-// Export individual normalizers for direct use
-export {
-  AddressNormalizer,
-  DateNormalizer,
-  PhoneNormalizer,
-  CurrencyNormalizer,
-  CodeNormalizer,
-  ExternalEnrichment,
-};

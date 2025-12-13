@@ -263,7 +263,7 @@ export class AdjudicationAgent extends BaseAgent<AdjudicationInput, Adjudication
 
   private calculatePayment(
     allowedAmount: number,
-    billedAmount: number,
+    _billedAmount: number,
     benefits: MemberBenefits
   ): { paidAmount: number; patientResponsibility: number } {
     // Start with allowed amount
@@ -276,8 +276,7 @@ export class AdjudicationAgent extends BaseAgent<AdjudicationInput, Adjudication
       amountAfterDeductible -= deductibleApplied;
     }
 
-    // Apply coinsurance
-    const planPays = amountAfterDeductible * (1 - benefits.coinsurance);
+    // Apply coinsurance (calculate member's portion)
     const memberPays = amountAfterDeductible * benefits.coinsurance;
 
     // Check out-of-pocket max

@@ -22,7 +22,6 @@ import {
   isPositiveNumber,
   isValidDiagnosisPointer,
   diagnosisPointerToIndex,
-  calculateAge,
   logValidationError,
 } from '../utils/index.js';
 import { logger } from '../utils/index.js';

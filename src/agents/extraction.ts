@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from 'uuid';
 import { BaseAgent, AgentResult } from './base.js';
 import {
   ClaimRecord,
@@ -6,7 +5,7 @@ import {
   ExtractedClaim,
   Provenance,
 } from '../models/index.js';
-import { getLLMService, OCRResult, OCRBlock } from '../services/index.js';
+import { getLLMService, OCRResult } from '../services/index.js';
 import { logger } from '../utils/index.js';
 
 export interface ExtractionInput {

@@ -1,4 +1,4 @@
-import Tesseract, { createWorker, Worker, RecognizeResult } from 'tesseract.js';
+import { createWorker, Worker, RecognizeResult } from 'tesseract.js';
 import sharp from 'sharp';
 import { BoundingBox } from '../models/index.js';
 import { logger } from '../utils/index.js';
@@ -228,8 +228,8 @@ export class OCRService {
 
     return {
       pageNumber,
-      width: data.imageWidth ?? 0,
-      height: data.imageHeight ?? 0,
+      width: (data as unknown as Record<string, unknown>).imageWidth as number ?? 0,
+      height: (data as unknown as Record<string, unknown>).imageHeight as number ?? 0,
       text: data.text,
       confidence: data.confidence,
       blocks,
@@ -380,7 +380,7 @@ export class OCRService {
     return 0;
   }
 
-  async detectCheckboxes(imageBuffer: Buffer, blocks: OCRBlock[]): Promise<Checkbox[]> {
+  async detectCheckboxes(_imageBuffer: Buffer, blocks: OCRBlock[]): Promise<Checkbox[]> {
     // Simple checkbox detection based on common patterns
     const checkboxes: Checkbox[] = [];
 

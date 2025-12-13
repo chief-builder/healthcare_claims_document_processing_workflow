@@ -25,7 +25,7 @@ export {
 
 export type {
   FieldInference,
-  CorrectionResult,
+  LLMCorrectionResult,
   ExtractionContext,
 } from './llm.js';
 
