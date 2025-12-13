@@ -52,11 +52,32 @@ async function testConfig() {
 
   try {
     const config = getConfig();
-    console.log('  ✅ Config loaded successfully');
+    console.log('  ✅ Config loaded successfully\n');
+
+    console.log('  🖥️  Server:');
     console.log(`     - Port: ${config.server.port}`);
+    console.log(`     - Host: ${config.server.host}`);
     console.log(`     - Environment: ${config.server.nodeEnv}`);
+
+    console.log('\n  🤖 Anthropic:');
     console.log(`     - API Key: ${config.anthropic.apiKey ? '***' + config.anthropic.apiKey.slice(-4) : 'NOT SET'}`);
     console.log(`     - Model: ${config.anthropic.model}`);
+
+    console.log('\n  📁 Storage:');
+    console.log(`     - Storage Path: ${config.storage.storagePath}`);
+    console.log(`     - Upload Path: ${config.storage.uploadPath}`);
+
+    console.log('\n  🔴 Redis:');
+    console.log(`     - URL: ${config.redis.url}`);
+
+    console.log('\n  ⚙️  Processing:');
+    console.log(`     - Max Correction Attempts: ${config.processing.maxCorrectionAttempts}`);
+    console.log(`     - Auto Process Confidence Threshold: ${config.processing.autoProcessConfidenceThreshold}`);
+    console.log(`     - Correction Confidence Threshold: ${config.processing.correctionConfidenceThreshold}`);
+
+    console.log('\n  📝 Logging:');
+    console.log(`     - Level: ${config.logging.level}`);
+    console.log(`     - Format: ${config.logging.format}`);
   } catch (error) {
     console.log('  ❌ Config failed:', error);
   }
