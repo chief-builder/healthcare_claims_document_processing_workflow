@@ -66,7 +66,7 @@ code .env
 
 Set the following:
 ```
-ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxx
+CLAUDE_CODE_OAUTH_TOKEN=oauth_token_xxxxxxxxxxxxx
 NODE_ENV=development
 LOG_LEVEL=debug
 ```
@@ -478,8 +478,8 @@ async function testQuality() {
   const { getConfig } = await import('./src/config/index.js');
   const config = getConfig();
 
-  if (!config.anthropic.apiKey || config.anthropic.apiKey === 'your-api-key-here') {
-    console.log('  ⚠️  Skipping - ANTHROPIC_API_KEY not set');
+  if (!config.anthropic.apiKey || config.anthropic.apiKey === 'your-oauth-token-here') {
+    console.log('  ⚠️  Skipping - CLAUDE_CODE_OAUTH_TOKEN not set');
     console.log('');
     return;
   }
@@ -925,8 +925,8 @@ async function testRAG() {
   const { getConfig } = await import('./src/config/index.js');
   const conf = getConfig();
 
-  if (!conf.anthropic.apiKey || conf.anthropic.apiKey === 'your-api-key-here') {
-    console.log('⚠️  ANTHROPIC_API_KEY not set - skipping LLM-dependent tests\n');
+  if (!conf.anthropic.apiKey || conf.anthropic.apiKey === 'your-oauth-token-here') {
+    console.log('⚠️  CLAUDE_CODE_OAUTH_TOKEN not set - skipping LLM-dependent tests\n');
     return;
   }
 
@@ -1018,8 +1018,8 @@ async function testVision() {
   const { getConfig } = await import('./src/config/index.js');
   const conf = getConfig();
 
-  if (!conf.anthropic.apiKey || conf.anthropic.apiKey === 'your-api-key-here') {
-    console.log('⚠️  ANTHROPIC_API_KEY not set - skipping vision tests\n');
+  if (!conf.anthropic.apiKey || conf.anthropic.apiKey === 'your-oauth-token-here') {
+    console.log('⚠️  CLAUDE_CODE_OAUTH_TOKEN not set - skipping vision tests\n');
     return;
   }
 
@@ -1113,8 +1113,8 @@ async function testE2E() {
   const { getConfig } = await import('./src/config/index.js');
   const conf = getConfig();
 
-  if (!conf.anthropic.apiKey || conf.anthropic.apiKey === 'your-api-key-here') {
-    console.log('⚠️  ANTHROPIC_API_KEY required for E2E test\n');
+  if (!conf.anthropic.apiKey || conf.anthropic.apiKey === 'your-oauth-token-here') {
+    console.log('⚠️  CLAUDE_CODE_OAUTH_TOKEN required for E2E test\n');
     return;
   }
 
@@ -1386,7 +1386,7 @@ Create `test-fixtures/sample-cms1500.json`:
 
 | Issue | Solution |
 |-------|----------|
-| `ANTHROPIC_API_KEY not set` | Add your API key to `.env` file |
+| `CLAUDE_CODE_OAUTH_TOKEN not set` | Add your OAuth token to `.env` file |
 | `Cannot find module` | Run `npm install` and ensure `npm run build` succeeds |
 | `ENOENT: no such file` | Create required directories: `mkdir -p data/storage data/uploads` |
 | `Permission denied` | Check file permissions on data directories |

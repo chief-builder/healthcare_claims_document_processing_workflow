@@ -46,7 +46,7 @@ export function loadConfig(): Config {
       nodeEnv: getEnvOrDefault('NODE_ENV', 'development'),
     },
     anthropic: {
-      apiKey: getEnvOrThrow('ANTHROPIC_API_KEY'),
+      apiKey: getEnvOrThrow('CLAUDE_CODE_OAUTH_TOKEN'),
       model: getEnvOrDefault('ANTHROPIC_MODEL', 'claude-sonnet-4-20250514'),
     },
     storage: {
