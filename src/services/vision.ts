@@ -102,7 +102,7 @@ export class VisionService {
   constructor() {
     const config = getConfig();
     this.client = new Anthropic({
-      apiKey: config.anthropic.apiKey,
+      authToken: config.anthropic.apiKey,
     });
     // Use Claude 3.5 Sonnet for vision tasks
     this.model = 'claude-sonnet-4-20250514';

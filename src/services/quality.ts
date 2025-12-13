@@ -52,7 +52,7 @@ export class QualityService {
   constructor() {
     const config = getConfig();
     this.client = new Anthropic({
-      apiKey: config.anthropic.apiKey,
+      authToken: config.anthropic.apiKey,
     });
     this.model = config.anthropic.model;
   }
