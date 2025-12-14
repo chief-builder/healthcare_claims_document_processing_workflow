@@ -349,6 +349,62 @@ export class StateManager extends EventEmitter {
   }
 
   /**
+   * List all claims with optional filtering
+   */
+  async listStates(filters?: {
+    status?: string;
+    priority?: string;
+    fromDate?: Date;
+    toDate?: Date;
+  }): Promise<ClaimState[]> {
+    const results: ClaimState[] = [];
+
+    for (const state of this.states.values()) {
+      // Apply filters
+      if (filters?.status && state.claim.status !== filters.status) {
+        continue;
+      }
+      if (filters?.priority && state.claim.priority !== filters.priority) {
+        continue;
+      }
+      if (filters?.fromDate) {
+        const createdAt = new Date(state.claim.createdAt);
+        if (createdAt < filters.fromDate) {
+          continue;
+        }
+      }
+      if (filters?.toDate) {
+        const createdAt = new Date(state.claim.createdAt);
+        if (createdAt > filters.toDate) {
+          continue;
+        }
+      }
+      results.push(state);
+    }
+
+    return results;
+  }
+
+  /**
+   * Delete a claim state
+   */
+  async deleteState(claimId: string): Promise<boolean> {
+    const state = this.states.get(claimId);
+    if (!state) {
+      return false;
+    }
+
+    this.states.delete(claimId);
+
+    // Also delete from storage
+    const storage = await this.getStorage();
+    await storage.deleteClaim(claimId);
+
+    this.emit('state:deleted', { claimId });
+    return true;
+  }
+
+  /**
    * Validate if a status transition is allowed
    */
   private isValidTransition(from: ClaimStatus, to: ClaimStatus): boolean {
