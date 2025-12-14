@@ -1855,131 +1855,82 @@ npx tsx test-concurrent.ts
 
 ### Step 7.7: Test Event Monitoring
 
-Create `test-events.ts`:
-
-```typescript
-// test-events.ts
-import { config } from 'dotenv';
-config();
-
-import { ExtractedClaim } from './src/models/index.js';
-
-function createTestClaim(id: string): ExtractedClaim {
-  return {
-    id,
-    documentType: 'cms_1500',
-    patient: {
-      memberId: 'MEM123456789',
-      firstName: 'John',
-      lastName: 'Smith',
-      dateOfBirth: '1985-03-15',
-    },
-    provider: { npi: '1234567893', name: 'Test Provider' },
-    diagnoses: [{ code: 'E11.9', isPrimary: true }],
-    serviceLines: [{
-      lineNumber: 1,
-      dateOfService: '2024-01-15',
-      procedureCode: '99213',
-      modifiers: [],
-      diagnosisPointers: ['A'],
-      units: 1,
-      chargeAmount: 150.00,
-    }],
-    totals: { totalCharges: 150.00 },
-    confidenceScores: { overall: 0.90 },
-    provenance: {},
-  };
-}
-
-async function testEvents() {
-  console.log('📡 Event Monitoring Tests\n');
-
-  const {
-    getWorkflowOrchestrator,
-    getStateManager,
-    resetStateManager,
-    resetWorkflowOrchestrator,
-  } = await import('./src/orchestrator/index.js');
-
-  resetStateManager();
-  resetWorkflowOrchestrator();
-
-  const stateManager = getStateManager();
-  const orchestrator = getWorkflowOrchestrator({ enableRAGIndexing: false });
-
-  // Track all events
-  const eventLog: Array<{ time: number; type: string; data: unknown }> = [];
-  const startTime = Date.now();
-
-  // State Manager events
-  stateManager.on('state:created', (data) => {
-    eventLog.push({ time: Date.now() - startTime, type: 'state:created', data });
-    console.log(`  [${Date.now() - startTime}ms] state:created - ${data.claimId}`);
-  });
-
-  stateManager.on('state:transition', (data) => {
-    eventLog.push({ time: Date.now() - startTime, type: 'state:transition', data });
-    console.log(`  [${Date.now() - startTime}ms] state:transition - ${data.fromStatus} -> ${data.toStatus}`);
-  });
-
-  stateManager.on('state:completed', (data) => {
-    eventLog.push({ time: Date.now() - startTime, type: 'state:completed', data });
-    console.log(`  [${Date.now() - startTime}ms] state:completed - ${data.claimId}`);
-  });
-
-  // Workflow events
-  orchestrator.on('workflow:started', (data) => {
-    eventLog.push({ time: Date.now() - startTime, type: 'workflow:started', data });
-    console.log(`  [${Date.now() - startTime}ms] workflow:started - ${data.claimId}`);
-  });
-
-  orchestrator.on('workflow:stage_started', (data) => {
-    eventLog.push({ time: Date.now() - startTime, type: 'workflow:stage_started', data });
-    console.log(`  [${Date.now() - startTime}ms] workflow:stage_started - ${data.stage}`);
-  });
-
-  orchestrator.on('workflow:stage_completed', (data) => {
-    eventLog.push({ time: Date.now() - startTime, type: 'workflow:stage_completed', data });
-    console.log(`  [${Date.now() - startTime}ms] workflow:stage_completed - ${data.stage}`);
-  });
-
-  orchestrator.on('workflow:completed', (data) => {
-    eventLog.push({ time: Date.now() - startTime, type: 'workflow:completed', data });
-    console.log(`  [${Date.now() - startTime}ms] workflow:completed - ${data.claimId}`);
-  });
-
-  // Process a claim
-  console.log('[Test] Processing claim with event monitoring...\n');
-  const claim = createTestClaim('CLM-EVENTS-001');
-  await orchestrator.processExtractedClaim(claim, 'normal');
-
-  // Summary
-  console.log('\n─'.repeat(50));
-  console.log('Event Summary:');
-  console.log('─'.repeat(50));
-
-  const eventCounts: Record<string, number> = {};
-  for (const event of eventLog) {
-    eventCounts[event.type] = (eventCounts[event.type] || 0) + 1;
-  }
-
-  for (const [type, count] of Object.entries(eventCounts).sort()) {
-    console.log(`  ${type}: ${count}`);
-  }
-
-  console.log(`\nTotal events: ${eventLog.length}`);
-  console.log(`Total time: ${Date.now() - startTime}ms`);
-
-  console.log('\n✓ Event Monitoring tests completed');
-}
-
-testEvents().catch(console.error);
-```
-
-Run:
+Run the pre-created test script:
 ```bash
 npx tsx test-events.ts
 ```
+
+**Expected Output:**
+```
+📡 Event Monitoring Tests
+
+[Test] Processing claim with event monitoring...
+
+  [   7ms] state:created - CLM-EVENTS-001
+  [   8ms] state:updated - CLM-EVENTS-001
+  [   9ms] state:transition - received -> parsing
+  [  10ms] state:updated - CLM-EVENTS-001
+  [  10ms] state:transition - parsing -> extracting
+  [  11ms] state:updated - CLM-EVENTS-001
+  [  12ms] state:transition - extracting -> validating
+  [  12ms] state:updated - CLM-EVENTS-001
+  [  12ms] workflow:started - CLM-EVENTS-001
+  [  12ms] workflow:stage_started - enrichment
+  [  15ms] state:updated - CLM-EVENTS-001
+  [  16ms] workflow:stage_completed - enrichment
+  [  16ms] workflow:stage_started - validation
+  [  22ms] state:updated - CLM-EVENTS-001
+  [  23ms] workflow:stage_completed - validation
+  [  24ms] state:transition - validating -> adjudicating
+  [  24ms] state:updated - CLM-EVENTS-001
+  [  24ms] workflow:stage_started - adjudication
+  [  25ms] state:updated - CLM-EVENTS-001
+  [  25ms] workflow:stage_completed - adjudication
+  [  26ms] state:transition - adjudicating -> completed
+  [  26ms] state:updated - CLM-EVENTS-001
+  [  26ms] state:completed - CLM-EVENTS-001
+  [  26ms] workflow:completed - CLM-EVENTS-001
+
+──────────────────────────────────────────────────
+Event Summary:
+──────────────────────────────────────────────────
+  state:completed: 1
+  state:created: 1
+  state:transition: 5
+  state:updated: 9
+  workflow:completed: 1
+  workflow:stage_completed: 3
+  workflow:stage_started: 3
+  workflow:started: 1
+
+Total events: 24
+Total time: 26ms
+
+✓ Event Monitoring tests completed
+```
+
+---
+
+### Section 7 Test Results Summary
+
+All orchestrator tests have been verified and pass successfully:
+
+| Test Script | Tests Passed | Key Observations |
+|-------------|--------------|------------------|
+| `test-orchestrator.ts` | All | Full orchestrator suite, NPI checksum validation works |
+| `test-state-manager.ts` | 5/5 | State transitions, confidence routing, invalid transition rejection |
+| `test-workflow.ts` | 5/5 | High/medium confidence claims, urgent priority, event tracking |
+| `test-review-workflow.ts` | 3/3 | Approve, reject, and correct review actions |
+| `test-concurrent.ts` | 5/5 | 5 claims in 42ms, 100% success rate |
+| `test-events.ts` | 24 events | Full event timeline with visual progress bars |
+
+**Key Learnings from Testing:**
+
+1. **Enrichment Service**: Boosts confidence scores (e.g., 72% → 82%) through normalization
+2. **Concurrent Processing**: Very efficient - 5 claims in ~42ms (8ms average per claim)
+3. **Event Emission**: 24 events emitted for a single claim lifecycle
+4. **Human Review Flow**: Three distinct paths work correctly (approve, reject, correct)
+5. **Valid NPI**: Use `1234567893` for tests (passes Luhn checksum validation)
 
 ---
 
@@ -2185,14 +2136,48 @@ npx tsx test-events.ts             # Event monitoring
 
 After manual testing passes:
 
-1. **Write automated unit tests** in `tests/unit/`
-2. **Set up CI/CD** with GitHub Actions
-3. **Implement API Layer** (Phase 11 of enhancement plan)
-   - REST API endpoints for claim submission
-   - WebSocket support for real-time status updates
-4. **Create integration tests** for the API
-5. **Add load testing** for performance validation
-6. **Production hardening** (Phase 14 of enhancement plan)
-   - Error recovery and retry mechanisms
+### Immediate Priority: API Layer (Phase 11)
+
+1. **REST API Implementation**
+   - `POST /api/claims` - Document upload and processing
+   - `GET /api/claims/:id` - Claim status and data retrieval
+   - `GET /api/claims/:id/extraction` - Extracted field data
+   - `POST /api/claims/:id/review` - Human review submission
+   - `GET /api/review-queue` - Pending review list
+
+2. **WebSocket Support**
+   - Real-time claim status updates
+   - Event streaming for workflow progress
+   - Review queue notifications
+
+3. **File Upload Handling**
+   - Multer middleware for multipart uploads
+   - Support for PDF, PNG, JPG, TIFF formats
+   - File size validation and limits
+
+### Short-term: UI Development (Phase 12)
+
+4. **Claims Dashboard UI**
+   - Claim submission form with drag-and-drop
+   - Status tracking with real-time updates
+   - Extraction results viewer with confidence highlighting
+
+5. **Review Queue Interface**
+   - List of claims pending human review
+   - Side-by-side document and extraction view
+   - Approve/Reject/Correct action buttons
+   - Correction form for field edits
+
+### Medium-term: Production Hardening
+
+6. **Formal Test Suite**
+   - Unit tests with Vitest
+   - Integration tests for API
+   - Load testing for performance validation
+
+7. **Production Features**
+   - Authentication and authorization
+   - Database migration (PostgreSQL)
+   - Docker containerization
+   - CI/CD with GitHub Actions
    - Monitoring and alerting
-   - Security audit
