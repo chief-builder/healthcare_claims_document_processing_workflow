@@ -414,7 +414,11 @@ export class WorkflowOrchestrator extends EventEmitter {
       logger.info('Extraction completed', { claimId, confidence: extractionResult.confidenceScores });
 
       // Check if extraction confidence is too low
-      const overallConfidence = extractionResult.confidenceScores.overall || 0;
+      // Calculate overall confidence from individual field scores
+      const fieldScores = Object.values(extractionResult.confidenceScores || {});
+      const overallConfidence = fieldScores.length > 0
+        ? fieldScores.reduce((sum, score) => sum + score, 0) / fieldScores.length
+        : 0.8; // Default to 0.8 if no scores available
       if (overallConfidence < 0.5) {
         logger.warn('Low extraction confidence, sending to review', { claimId, confidence: overallConfidence });
         await this.stateManager.transitionTo(claimId, 'pending_review', 'Low extraction confidence');
