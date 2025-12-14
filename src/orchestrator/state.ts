@@ -411,7 +411,7 @@ export class StateManager extends EventEmitter {
     const validTransitions: Record<ClaimStatus, ClaimStatus[]> = {
       received: ['parsing', 'failed'],
       parsing: ['extracting', 'failed'],
-      extracting: ['validating', 'failed'],
+      extracting: ['validating', 'pending_review', 'failed'],
       validating: ['correcting', 'pending_review', 'adjudicating', 'failed'],
       correcting: ['validating', 'pending_review', 'failed'],
       pending_review: ['validating', 'adjudicating', 'completed', 'failed'],
