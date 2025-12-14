@@ -70,6 +70,12 @@ pretty_json() {
     fi
 }
 
+# Extract HTTP response body (all lines except the last which is the status code)
+# Works on both Linux and macOS
+get_body() {
+    echo "$1" | sed '$d'
+}
+
 # Extract value from JSON using jq or grep fallback
 json_get() {
     local json="$1"
@@ -130,7 +136,7 @@ test_authentication() {
     print_subheader "2.1 Request WITHOUT API Key (expect 401)"
     RESPONSE=$(curl -s -w "\n%{http_code}" "$API_BASE/claims")
     HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-    BODY=$(echo "$RESPONSE" | head -n -1)
+    BODY=$(get_body "$RESPONSE")
 
     echo "  HTTP Status: $HTTP_CODE"
     echo "  Response:"
@@ -145,7 +151,7 @@ test_authentication() {
     print_subheader "2.2 Request WITH Invalid API Key (expect 401)"
     RESPONSE=$(curl -s -w "\n%{http_code}" -H "Authorization: Bearer wrong-key" "$API_BASE/claims")
     HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-    BODY=$(echo "$RESPONSE" | head -n -1)
+    BODY=$(get_body "$RESPONSE")
 
     echo "  HTTP Status: $HTTP_CODE"
     if [ "$HTTP_CODE" == "401" ]; then
@@ -157,7 +163,7 @@ test_authentication() {
     print_subheader "2.3 Request WITH Valid API Key (expect 200)"
     RESPONSE=$(curl -s -w "\n%{http_code}" -H "$AUTH_HEADER" "$API_BASE/claims")
     HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-    BODY=$(echo "$RESPONSE" | head -n -1)
+    BODY=$(get_body "$RESPONSE")
 
     echo "  HTTP Status: $HTTP_CODE"
     if [ "$HTTP_CODE" == "200" ]; then
@@ -602,7 +608,7 @@ test_error_handling() {
     print_subheader "8.1 Get Non-existent Claim (expect 404)"
     RESPONSE=$(curl -s -w "\n%{http_code}" -H "$AUTH_HEADER" "$API_BASE/claims/INVALID-CLAIM-ID")
     HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-    BODY=$(echo "$RESPONSE" | head -n -1)
+    BODY=$(get_body "$RESPONSE")
 
     echo "  HTTP Status: $HTTP_CODE"
     echo "  Response:"
@@ -622,7 +628,7 @@ test_error_handling() {
         -F "document=@/tmp/test-error.txt" \
         -F "priority=invalid_priority")
     HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-    BODY=$(echo "$RESPONSE" | head -n -1)
+    BODY=$(get_body "$RESPONSE")
     rm /tmp/test-error.txt 2>/dev/null || true
 
     echo "  HTTP Status: $HTTP_CODE"
@@ -641,7 +647,7 @@ test_error_handling() {
         -H "Content-Type: application/json" \
         -d '{}')
     HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-    BODY=$(echo "$RESPONSE" | head -n -1)
+    BODY=$(get_body "$RESPONSE")
 
     echo "  HTTP Status: $HTTP_CODE"
     echo "  Response:"
