@@ -1939,6 +1939,47 @@ All orchestrator tests have been verified and pass successfully:
 
 This section covers testing the RESTful API and WebSocket functionality implemented in Phase 11.
 
+### Quick Test Checklist
+
+Use this checklist to quickly verify the API is working correctly:
+
+```bash
+# 1. Start the server (in a separate terminal)
+npx tsx test-api.ts
+
+# 2. Health check
+curl http://localhost:3000/api/health
+
+# 3. Upload a test claim
+curl -X POST http://localhost:3000/api/claims \
+  -H "Authorization: Bearer dev-api-key" \
+  -F "document=@test-data/claim-diabetes-routine.png" \
+  -F "priority=normal"
+
+# 4. Check claim status (replace CLM-xxxxxx with actual ID from step 3)
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx"
+
+# 5. Verify validation ran (should return validation results, not NOT_FOUND)
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx/validation"
+
+# 6. Check extraction results
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx/extraction"
+
+# 7. Check adjudication results
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx/adjudication"
+
+# 8. View review queue
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/review-queue"
+```
+
+**Expected Results:**
+- Step 2: `{"success":true,"status":"healthy",...}`
+- Step 3: `{"success":true,"data":{"claimId":"CLM-xxx","status":"completed",...}}`
+- Step 5: Returns validation errors/warnings (NOT a `NOT_FOUND` error)
+- Step 8: Empty or contains claims that need manual review
+
+---
+
 ### Prerequisites for API Testing
 
 Ensure you have:
@@ -2181,18 +2222,63 @@ curl -X POST http://localhost:3000/api/claims \
 {
   "success": true,
   "data": {
-    "claimId": "CLM-1765731215177-A0C3BE77",
-    "status": "pending_review",
-    "processingTimeMs": 250
+    "claimId": "CLM-1765754509023-9F86C9B8",
+    "status": "completed",
+    "processingTimeMs": 39510
   },
   "message": "Document submitted for processing"
 }
 ```
 
-**Note:** Processing status depends on configuration:
-- **Without `ANTHROPIC_API_KEY`**: Claims go to `pending_review` for manual processing
-- **With `ANTHROPIC_API_KEY`**: Full LLM pipeline runs (Vision → Extraction → Validation → Adjudication)
-- **With full extraction**: Claims may go to `completed` or `pending_review` based on confidence scores
+**Note:** Processing status depends on configuration and extraction confidence:
+
+| Scenario | Expected Status | Reason |
+|----------|----------------|--------|
+| Without `ANTHROPIC_API_KEY` | `pending_review` | No LLM available for extraction |
+| With API key, high confidence (≥50%) | `completed` | Full pipeline runs successfully |
+| With API key, low confidence (<50%) | `pending_review` | Extraction confidence too low |
+| Extraction/parsing error | `pending_review` | Manual review required |
+
+**Verify Processing Results:**
+
+After upload completes, verify the claim went through validation:
+```bash
+# Replace CLM-xxxxxx with your actual claim ID
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx/validation"
+```
+
+**Expected Validation Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "isValid": false,
+    "errors": [
+      {
+        "field": "provider.npi",
+        "errorType": "syntax",
+        "message": "NPI checksum is invalid",
+        "currentValue": "1234567890",
+        "isCorrectable": true
+      }
+    ],
+    "warnings": [
+      {
+        "field": "serviceLines.0.chargeAmount",
+        "errorType": "semantic",
+        "message": "Charge amount of $150 appears high for CPT 99213...",
+        "isCorrectable": false
+      }
+    ],
+    "overallConfidence": 0.796
+  }
+}
+```
+
+**If validation returns NOT_FOUND error**, the claim may have gone to `pending_review` before validation due to low extraction confidence. Check the review queue:
+```bash
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/review-queue"
+```
 
 #### Alternative: Create a Simple Test Image
 
@@ -2699,6 +2785,64 @@ npx tsx test-api.ts
 - **Default**: 100 requests per 15 minutes
 - **Lenient**: 500 requests per 15 minutes
 - **Query**: 30 requests per 15 minutes (LLM operations)
+
+---
+
+### Section 8 Troubleshooting Guide
+
+#### Issue: Validation results NOT_FOUND but claim is in review queue
+
+**Symptom:**
+```bash
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims/CLM-xxx/validation"
+# Returns: {"error":{"code":"NOT_FOUND","message":"Validation results not available..."}}
+```
+
+**Cause:** The claim went to `pending_review` status before the validation stage ran. This happens when extraction confidence is below 50%.
+
+**Resolution:** This was fixed in commit `02536b9` - ensure you have the latest code with the confidence check fix.
+
+**Verification:**
+```bash
+# Check claim status
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims/CLM-xxx"
+# If status is "pending_review", approve it to continue processing:
+curl -X POST "http://localhost:3000/api/review-queue/CLM-xxx/review" \
+  -H "Authorization: Bearer dev-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"action": "approve"}'
+```
+
+#### Issue: All claims going to pending_review
+
+**Symptom:** Every uploaded claim ends up in `pending_review` status instead of `completed`.
+
+**Possible Causes:**
+1. Missing `ANTHROPIC_API_KEY` - extraction can't run
+2. Old code with broken confidence check (using `confidenceScores.overall` which doesn't exist)
+
+**Resolution:**
+1. Set `ANTHROPIC_API_KEY` in your `.env` file
+2. Pull latest code with the confidence check fix
+
+#### Issue: Server returns 401 Unauthorized
+
+**Symptom:** All API calls return `{"error":{"code":"UNAUTHORIZED","message":"API key required"}}`
+
+**Resolution:** Include the API key in your requests:
+```bash
+# Use Bearer token
+curl -H "Authorization: Bearer dev-api-key" http://localhost:3000/api/claims
+```
+
+#### Issue: Server not responding
+
+**Symptom:** `curl: (7) Failed to connect to localhost port 3000`
+
+**Resolution:**
+1. Start the server: `npx tsx test-api.ts`
+2. Check if another process is using port 3000: `lsof -i :3000`
+3. Try a different port: Modify `test-api.ts` to use port 3001
 
 ---
 
