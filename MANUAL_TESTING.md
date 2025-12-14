@@ -2033,7 +2033,41 @@ curl http://localhost:3000/api/health/detailed
 
 ### Step 8.3: Test Authentication
 
-**Test without API key (should fail):**
+#### API Key Configuration
+
+The API uses key-based authentication. In development mode, a default API key is configured:
+
+| Environment | API Key | Source |
+|-------------|---------|--------|
+| Development | `dev-api-key` | Default in `src/config/index.ts` |
+| Production | Set via env | `API_KEYS` environment variable |
+
+**To configure custom API keys in production:**
+```bash
+# Single key
+export API_KEYS=your-secret-api-key
+
+# Multiple keys (comma-separated)
+export API_KEYS=key1,key2,key3
+```
+
+#### Authentication Methods
+
+The API supports two authentication header formats:
+
+1. **Bearer Token** (recommended):
+   ```bash
+   curl -H "Authorization: Bearer dev-api-key" http://localhost:3000/api/claims
+   ```
+
+2. **X-API-Key Header**:
+   ```bash
+   curl -H "X-API-Key: dev-api-key" http://localhost:3000/api/claims
+   ```
+
+#### Test Cases
+
+**Test 1: Without API key (should fail):**
 ```bash
 curl http://localhost:3000/api/claims
 ```
@@ -2050,9 +2084,26 @@ curl http://localhost:3000/api/claims
 }
 ```
 
-**Test with valid API key:**
+**Test 2: With invalid API key (should fail):**
 ```bash
-curl -H "X-API-Key: dev-api-key" http://localhost:3000/api/claims
+curl -H "Authorization: Bearer wrong-key" http://localhost:3000/api/claims
+```
+
+**Expected Response (401 Unauthorized):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Invalid API key"
+  },
+  "timestamp": "2025-12-14T06:00:00.000Z"
+}
+```
+
+**Test 3: With valid Bearer token:**
+```bash
+curl -H "Authorization: Bearer dev-api-key" http://localhost:3000/api/claims
 ```
 
 **Expected Response (200 OK):**
@@ -2069,10 +2120,12 @@ curl -H "X-API-Key: dev-api-key" http://localhost:3000/api/claims
 }
 ```
 
-**Alternative: Use Bearer token:**
+**Test 4: With valid X-API-Key header:**
 ```bash
-curl -H "Authorization: Bearer dev-api-key" http://localhost:3000/api/claims
+curl -H "X-API-Key: dev-api-key" http://localhost:3000/api/claims
 ```
+
+**Expected Response (200 OK):** Same as Test 3.
 
 ---
 
