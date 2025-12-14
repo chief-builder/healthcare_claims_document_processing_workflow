@@ -2182,17 +2182,17 @@ curl -X POST http://localhost:3000/api/claims \
   "success": true,
   "data": {
     "claimId": "CLM-1765731215177-A0C3BE77",
-    "status": "completed",
-    "processingTimeMs": 15000
+    "status": "pending_review",
+    "processingTimeMs": 250
   },
   "message": "Document submitted for processing"
 }
 ```
 
-**Note:** Processing status depends on:
-- Document complexity and LLM response time
-- Whether `ANTHROPIC_API_KEY` is configured (required for full LLM processing)
-- State machine transitions (some may fail with state transition errors without API key)
+**Note:** Processing status depends on configuration:
+- **Without `ANTHROPIC_API_KEY`**: Claims go to `pending_review` for manual processing
+- **With `ANTHROPIC_API_KEY`**: Full LLM pipeline runs (Vision → Extraction → Validation → Adjudication)
+- **With full extraction**: Claims may go to `completed` or `pending_review` based on confidence scores
 
 #### Alternative: Create a Simple Test Image
 
