@@ -31,12 +31,13 @@ async function testServices() {
       await testQuality();
       break;
     case 'all':
+      // Run lightweight tests first, then heavy ones
       await testConfig();
       await testValidators();
       await testNPI();
-      await testEnrichment();
-      await testEmbeddings();
-      await testVectorStore();
+      await testEmbeddings();    // Lightweight - run before heavy imports
+      await testVectorStore();   // Uses embeddings
+      await testEnrichment();    // Heavy - imports Anthropic SDK
       break;
     default:
       console.log('Usage: npx tsx test-services.ts <test-name>');

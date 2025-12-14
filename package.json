@@ -10,6 +10,7 @@
     "dev": "tsx watch src/index.ts",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:services": "NODE_OPTIONS='--max-old-space-size=4096' tsx test-services.ts",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\""
