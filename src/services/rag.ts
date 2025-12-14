@@ -1,5 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { getConfig } from '../config/index.js';
+import { getClaudeAgentService, ClaudeAgentService } from './claude-agent.js';
 import { ExtractedClaim } from '../models/index.js';
 import { getEmbeddingsService, EmbeddingsService, ChunkingOptions } from './embeddings.js';
 import { getVectorStore, VectorStore, SearchResult, SearchOptions } from './vectorstore.js';
@@ -51,17 +50,12 @@ export interface ClaimComparison {
 }
 
 export class RAGService {
-  private client: Anthropic;
-  private model: string;
+  private claudeAgent: ClaudeAgentService;
   private embeddingsService: EmbeddingsService;
   private vectorStore: VectorStore | null = null;
 
   constructor() {
-    const config = getConfig();
-    this.client = new Anthropic({
-      apiKey: config.anthropic.apiKey,
-    });
-    this.model = config.anthropic.model;
+    this.claudeAgent = getClaudeAgentService();
     this.embeddingsService = getEmbeddingsService();
   }
 
@@ -258,21 +252,11 @@ Respond in JSON:
 }`;
 
     try {
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: 1024,
-        messages: [{ role: 'user', content: prompt }],
-      });
-
-      const content = response.content[0];
-      if (content.type !== 'text') {
-        throw new Error('Unexpected response type');
-      }
-
-      const jsonMatch = content.text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('No JSON in response');
-
-      const parsed = JSON.parse(jsonMatch[0]);
+      const parsed = await this.claudeAgent.promptForJSON<{
+        summary: string;
+        keyPoints: string[];
+        documentType?: string;
+      }>(prompt);
 
       return {
         summary: parsed.summary,
@@ -330,21 +314,11 @@ Respond in JSON:
 }`;
 
     try {
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: 1024,
-        messages: [{ role: 'user', content: prompt }],
-      });
-
-      const content = response.content[0];
-      if (content.type !== 'text') {
-        throw new Error('Unexpected response type');
-      }
-
-      const jsonMatch = content.text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('No JSON in response');
-
-      const parsed = JSON.parse(jsonMatch[0]);
+      const parsed = await this.claudeAgent.promptForJSON<{
+        similarities?: string[];
+        differences?: string[];
+        recommendation?: string;
+      }>(prompt);
 
       return {
         claimId1,
@@ -468,21 +442,12 @@ Respond in JSON:
 }`;
 
     try {
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: 1024,
-        messages: [{ role: 'user', content: prompt }],
-      });
-
-      const content = response.content[0];
-      if (content.type !== 'text') {
-        throw new Error('Unexpected response type');
-      }
-
-      const jsonMatch = content.text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('No JSON in response');
-
-      const parsed = JSON.parse(jsonMatch[0]);
+      const parsed = await this.claudeAgent.promptForJSON<{
+        answer: string;
+        confidence?: number;
+        reasoning?: string;
+        sourceIndices?: number[];
+      }>(prompt);
 
       // Map sources
       const responseSourceIndices = (parsed.sourceIndices ?? []) as number[];
