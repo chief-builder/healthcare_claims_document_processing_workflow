@@ -393,13 +393,14 @@ async function testVectorStore() {
 
 // ============ Quality Service Test ============
 async function testQuality() {
-  console.log('⭐ Testing Quality Service (requires API key)...');
+  console.log('⭐ Testing Quality Service (requires OAuth token)...');
 
-  const { getConfig } = await import('./src/config/index.js');
-  const config = getConfig();
+  // Claude Agent SDK reads CLAUDE_CODE_OAUTH_TOKEN directly from environment
+  const oauthToken = process.env.CLAUDE_CODE_OAUTH_TOKEN;
 
-  if (!config.anthropic.apiKey || config.anthropic.apiKey === 'your-oauth-token-here') {
+  if (!oauthToken || oauthToken === 'your-oauth-token-here') {
     console.log('  ⚠️  Skipping - CLAUDE_CODE_OAUTH_TOKEN not set');
+    console.log('  Set it with: export CLAUDE_CODE_OAUTH_TOKEN="your-token"');
     console.log('');
     return;
   }
