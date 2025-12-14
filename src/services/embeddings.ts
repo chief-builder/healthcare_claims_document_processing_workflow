@@ -238,7 +238,10 @@ export class EmbeddingsService {
         metadata: { type: 'paragraph' },
       });
 
-      startOffset += chunkText.length - options.overlap;
+      // Ensure we always advance to prevent infinite loop
+      // when chunk size is smaller than overlap
+      const advance = Math.max(1, chunkText.length - options.overlap);
+      startOffset += advance;
       chunkIndex++;
     }
 
