@@ -1,3 +1,13 @@
+// Claude Agent SDK Service
+export {
+  ClaudeAgentService,
+  getClaudeAgentService,
+} from './claude-agent.js';
+
+export type {
+  ClaudeAgentResponse,
+} from './claude-agent.js';
+
 // OCR Service
 export {
   OCRService,

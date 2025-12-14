@@ -1,10 +1,10 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { getConfig } from '../config/index.js';
+import { getClaudeAgentService, ClaudeAgentService } from './claude-agent.js';
 import { ExtractedClaim, ValidationResult } from '../models/index.js';
 import { logger } from '../utils/index.js';
 
 /**
  * Quality assessment using LLM-as-judge pattern
+ * Uses Claude Agent SDK with OAuth token authentication
  */
 
 export interface QualityDimension {
@@ -46,15 +46,10 @@ export interface ComparisonJudgement {
 }
 
 export class QualityService {
-  private client: Anthropic;
-  private model: string;
+  private claudeAgent: ClaudeAgentService;
 
   constructor() {
-    const config = getConfig();
-    this.client = new Anthropic({
-      apiKey: config.anthropic.apiKey,
-    });
-    this.model = config.anthropic.model;
+    this.claudeAgent = getClaudeAgentService();
   }
 
   /**
@@ -106,18 +101,17 @@ Respond in JSON:
 }`;
 
     try {
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: 2048,
-        messages: [{ role: 'user', content: prompt }],
-      });
+      const parsed = await this.claudeAgent.promptForJSON<{
+        dimensions: {
+          completeness: { score: number; reasoning: string; issues: string[] };
+          accuracy: { score: number; reasoning: string; issues: string[] };
+          consistency: { score: number; reasoning: string; issues: string[] };
+          formatting: { score: number; reasoning: string; issues: string[] };
+        };
+        recommendations: string[];
+        criticalIssues?: string[];
+      }>(prompt);
 
-      const content = response.content[0];
-      if (content.type !== 'text') {
-        throw new Error('Unexpected response type');
-      }
-
-      const parsed = JSON.parse(this.extractJSON(content.text));
       return this.buildQualityScore(parsed);
     } catch (error) {
       logger.error('Quality evaluation failed', { error });
@@ -168,18 +162,7 @@ Respond in JSON:
 }`;
 
     try {
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: 1024,
-        messages: [{ role: 'user', content: prompt }],
-      });
-
-      const content = response.content[0];
-      if (content.type !== 'text') {
-        throw new Error('Unexpected response type');
-      }
-
-      return JSON.parse(this.extractJSON(content.text));
+      return await this.claudeAgent.promptForJSON<ComparisonJudgement>(prompt);
     } catch (error) {
       logger.error('Extraction comparison failed', { error });
       return {
@@ -220,18 +203,12 @@ Respond in JSON:
 }`;
 
     try {
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: 256,
-        messages: [{ role: 'user', content: prompt }],
-      });
-
-      const content = response.content[0];
-      if (content.type !== 'text') {
-        throw new Error('Unexpected response type');
-      }
-
-      return JSON.parse(this.extractJSON(content.text));
+      return await this.claudeAgent.promptForJSON<{
+        isCorrect: boolean;
+        confidence: number;
+        correctValue?: string;
+        reasoning: string;
+      }>(prompt);
     } catch (error) {
       logger.error('Field validation failed', { error, fieldName });
       return {
@@ -416,14 +393,6 @@ Respond in JSON:
     }
 
     return current;
-  }
-
-  private extractJSON(text: string): string {
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return jsonMatch[0];
-    }
-    throw new Error('No JSON found in response');
   }
 }
 

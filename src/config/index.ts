@@ -30,14 +30,6 @@ function getEnvOrDefault(key: string, defaultValue: string): string {
   return process.env[key] ?? defaultValue;
 }
 
-function getEnvOrThrow(key: string): string {
-  const value = process.env[key];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${key}`);
-  }
-  return value;
-}
-
 export function loadConfig(): Config {
   return {
     server: {
@@ -46,7 +38,9 @@ export function loadConfig(): Config {
       nodeEnv: getEnvOrDefault('NODE_ENV', 'development'),
     },
     anthropic: {
-      apiKey: getEnvOrThrow('ANTHROPIC_API_KEY'),
+      // Claude Agent SDK uses CLAUDE_CODE_OAUTH_TOKEN automatically
+      // This is only needed for direct Anthropic SDK usage
+      apiKey: getEnvOrDefault('ANTHROPIC_API_KEY', ''),
       model: getEnvOrDefault('ANTHROPIC_MODEL', 'claude-sonnet-4-20250514'),
     },
     storage: {
