@@ -2062,7 +2062,7 @@ The API supports two authentication header formats:
 
 2. **X-API-Key Header**:
    ```bash
-   curl -H "X-API-Key: dev-api-key" http://localhost:3000/api/claims
+   curl -H "Authorization: Bearer dev-api-key" http://localhost:3000/api/claims
    ```
 
 #### Test Cases
@@ -2122,7 +2122,7 @@ curl -H "Authorization: Bearer dev-api-key" http://localhost:3000/api/claims
 
 **Test 4: With valid X-API-Key header:**
 ```bash
-curl -H "X-API-Key: dev-api-key" http://localhost:3000/api/claims
+curl -H "Authorization: Bearer dev-api-key" http://localhost:3000/api/claims
 ```
 
 **Expected Response (200 OK):** Same as Test 3.
@@ -2131,24 +2131,57 @@ curl -H "X-API-Key: dev-api-key" http://localhost:3000/api/claims
 
 ### Step 8.4: Test Document Upload
 
-**Upload a test document:**
-```bash
-# Create a simple test image (1x1 pixel PNG)
-echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > test-claim.png
+#### Generate Sample Claim Documents
 
-# Upload the document
+The project includes a test data generator that creates realistic healthcare claim images:
+
+```bash
+# Generate sample claim images
+npx tsx test-data/generate-test-claims.ts
+```
+
+**Generated Test Files:**
+
+| Filename | Patient | Diagnosis | Charge | Use Case |
+|----------|---------|-----------|--------|----------|
+| `claim-diabetes-routine.png` | John Smith | E11.9 - Type 2 Diabetes | $150.00 | Routine office visit |
+| `claim-hypertension.png` | Maria Garcia | I10 - Essential Hypertension | $200.00 | Moderate complexity |
+| `claim-respiratory.png` | Robert Wilson | J06.9 - Upper Respiratory | $100.00 | Straightforward visit |
+| `claim-high-value.png` | Jennifer Adams | M54.5 - Low Back Pain | $45,000.00 | High-value procedure |
+| `claim-urgent-cardiac.png` | Thomas Brown | I21.0 - STEMI | $35,000.00 | Urgent cardiac case |
+
+#### Upload Test Documents
+
+**Upload a routine claim:**
+```bash
 curl -X POST http://localhost:3000/api/claims \
-  -H "X-API-Key: dev-api-key" \
-  -F "document=@test-claim.png" \
+  -H "Authorization: Bearer dev-api-key" \
+  -F "document=@test-data/claim-diabetes-routine.png" \
   -F "priority=normal"
 ```
 
-**Expected Response (201 Created):**
+**Upload a high-priority claim:**
+```bash
+curl -X POST http://localhost:3000/api/claims \
+  -H "Authorization: Bearer dev-api-key" \
+  -F "document=@test-data/claim-high-value.png" \
+  -F "priority=high"
+```
+
+**Upload an urgent claim:**
+```bash
+curl -X POST http://localhost:3000/api/claims \
+  -H "Authorization: Bearer dev-api-key" \
+  -F "document=@test-data/claim-urgent-cardiac.png" \
+  -F "priority=urgent"
+```
+
+**Expected Response (Success):**
 ```json
 {
   "success": true,
   "data": {
-    "claimId": "CLM-xxxxxx",
+    "claimId": "CLM-1765731215177-A0C3BE77",
     "status": "completed",
     "processingTimeMs": 15000
   },
@@ -2156,7 +2189,27 @@ curl -X POST http://localhost:3000/api/claims \
 }
 ```
 
-**Note:** Processing time depends on document complexity and LLM response time.
+**Note:** Processing status depends on:
+- Document complexity and LLM response time
+- Whether `ANTHROPIC_API_KEY` is configured (required for full LLM processing)
+- State machine transitions (some may fail with state transition errors without API key)
+
+#### Alternative: Create a Simple Test Image
+
+If you don't want to use the generator, create a minimal test image:
+
+```bash
+# Create a 1x1 pixel PNG (minimal valid image)
+echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > test-claim.png
+
+# Upload the minimal image
+curl -X POST http://localhost:3000/api/claims \
+  -H "Authorization: Bearer dev-api-key" \
+  -F "document=@test-claim.png" \
+  -F "priority=normal"
+```
+
+**Note:** Minimal images will likely fail LLM extraction but still test the upload mechanism.
 
 ---
 
@@ -2164,24 +2217,29 @@ curl -X POST http://localhost:3000/api/claims \
 
 **List all claims:**
 ```bash
-curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims"
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims"
 ```
 
 **List claims with filters:**
 ```bash
-# Filter by status
-curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims?status=completed"
+# Filter by status (received, parsing, extracting, validating, pending_review, completed, failed)
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims?status=completed"
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims?status=failed"
 
-# Filter by priority
-curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims?priority=high"
+# Filter by priority (normal, high, urgent)
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims?priority=high"
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims?priority=normal"
+
+# Combined filters
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims?status=failed&priority=normal"
 
 # Pagination
-curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims?page=1&limit=10"
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims?page=1&limit=10"
 ```
 
-**Get claim details:**
+**Get claim details (replace CLM-xxxxxx with actual claim ID):**
 ```bash
-curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx"
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx"
 ```
 
 **Expected Response:**
@@ -2206,27 +2264,27 @@ curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx"
 
 **Get extraction results:**
 ```bash
-curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx/extraction"
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx/extraction"
 ```
 
 **Get validation results:**
 ```bash
-curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx/validation"
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx/validation"
 ```
 
 **Get adjudication results:**
 ```bash
-curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx/adjudication"
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx/adjudication"
 ```
 
 **Get processing history:**
 ```bash
-curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx/history"
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx/history"
 ```
 
 **Delete a claim:**
 ```bash
-curl -X DELETE -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx"
+curl -X DELETE -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx"
 ```
 
 **Expected Response:**
@@ -2243,7 +2301,7 @@ curl -X DELETE -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims/CLM
 
 **Get review queue (claims pending human review):**
 ```bash
-curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/review-queue"
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/review-queue"
 ```
 
 **Expected Response:**
@@ -2270,7 +2328,7 @@ curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/review-queue"
 
 **Get review statistics:**
 ```bash
-curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/review-queue/stats/summary"
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/review-queue/stats/summary"
 ```
 
 **Expected Response:**
@@ -2297,7 +2355,7 @@ curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/review-queue/stats/s
 **Submit a review decision (approve):**
 ```bash
 curl -X POST "http://localhost:3000/api/review-queue/CLM-xxxxxx/review" \
-  -H "X-API-Key: dev-api-key" \
+  -H "Authorization: Bearer dev-api-key" \
   -H "Content-Type: application/json" \
   -d '{"action": "approve"}'
 ```
@@ -2305,7 +2363,7 @@ curl -X POST "http://localhost:3000/api/review-queue/CLM-xxxxxx/review" \
 **Submit a review decision (reject with reason):**
 ```bash
 curl -X POST "http://localhost:3000/api/review-queue/CLM-xxxxxx/review" \
-  -H "X-API-Key: dev-api-key" \
+  -H "Authorization: Bearer dev-api-key" \
   -H "Content-Type: application/json" \
   -d '{"action": "reject", "reason": "Invalid documentation"}'
 ```
@@ -2313,7 +2371,7 @@ curl -X POST "http://localhost:3000/api/review-queue/CLM-xxxxxx/review" \
 **Submit a review decision (correct with changes):**
 ```bash
 curl -X POST "http://localhost:3000/api/review-queue/CLM-xxxxxx/review" \
-  -H "X-API-Key: dev-api-key" \
+  -H "Authorization: Bearer dev-api-key" \
   -H "Content-Type: application/json" \
   -d '{
     "action": "correct",
@@ -2333,7 +2391,7 @@ curl -X POST "http://localhost:3000/api/review-queue/CLM-xxxxxx/review" \
 **Query claims with natural language:**
 ```bash
 curl -X POST "http://localhost:3000/api/query" \
-  -H "X-API-Key: dev-api-key" \
+  -H "Authorization: Bearer dev-api-key" \
   -H "Content-Type: application/json" \
   -d '{"question": "What diabetes-related claims are in the system?", "maxChunks": 5}'
 ```
@@ -2359,13 +2417,13 @@ curl -X POST "http://localhost:3000/api/query" \
 
 **Find similar claims:**
 ```bash
-curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/query/claims/CLM-xxxxxx/similar?limit=5"
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/query/claims/CLM-xxxxxx/similar?limit=5"
 ```
 
 **Index a claim for RAG:**
 ```bash
 curl -X POST "http://localhost:3000/api/query/claims/CLM-xxxxxx/index" \
-  -H "X-API-Key: dev-api-key"
+  -H "Authorization: Bearer dev-api-key"
 ```
 
 ---
@@ -2374,7 +2432,7 @@ curl -X POST "http://localhost:3000/api/query/claims/CLM-xxxxxx/index" \
 
 **Test 404 Not Found:**
 ```bash
-curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims/INVALID-ID"
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims/INVALID-ID"
 ```
 
 **Expected Response (404):**
@@ -2392,7 +2450,7 @@ curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims/INVALID-ID"
 **Test validation error (invalid priority):**
 ```bash
 curl -X POST http://localhost:3000/api/claims \
-  -H "X-API-Key: dev-api-key" \
+  -H "Authorization: Bearer dev-api-key" \
   -F "document=@test-claim.png" \
   -F "priority=invalid"
 ```
@@ -2413,7 +2471,7 @@ curl -X POST http://localhost:3000/api/claims \
 **Test missing required field:**
 ```bash
 curl -X POST "http://localhost:3000/api/query" \
-  -H "X-API-Key: dev-api-key" \
+  -H "Authorization: Bearer dev-api-key" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
