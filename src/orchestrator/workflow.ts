@@ -16,6 +16,9 @@ import { getEnrichmentService } from '../services/enrichment.js';
 import { getQualityService } from '../services/quality.js';
 import { getRAGService } from '../services/rag.js';
 import { getQueueService } from '../services/queue.js';
+import { getVisionService } from '../services/vision.js';
+import { getLLMService } from '../services/llm.js';
+import { getStorageService } from '../services/storage.js';
 import { logger } from '../utils/index.js';
 
 export interface WorkflowConfig {
@@ -340,33 +343,112 @@ export class WorkflowOrchestrator extends EventEmitter {
   private async runPipeline(state: ClaimState): Promise<WorkflowResult> {
     const claimId = state.claim.id;
 
-    // For now, we need extracted claim data to proceed
-    // In full implementation, parsing and extraction agents would run here
-    if (!state.extractedClaim) {
-      // Transition through parsing and extracting stages
-      // This is a placeholder - full implementation would use OCR and LLM extraction
-      await this.stateManager.transitionTo(claimId, 'parsing', 'Parsing document');
-      await this.stateManager.transitionTo(claimId, 'extracting', 'Extracting fields');
+    // If we already have extracted claim data (pre-extracted), skip to validation
+    if (state.extractedClaim) {
+      await this.stateManager.transitionTo(claimId, 'validating', 'Starting validation');
+      return this.runValidationAndBeyond(state);
+    }
 
-      // For demo, we'll mark as needing review since we don't have extraction
-      await this.stateManager.transitionTo(claimId, 'pending_review', 'Manual extraction required');
+    // Stage 1: Parse document using Vision Service
+    await this.stateManager.transitionTo(claimId, 'parsing', 'Parsing document with Vision AI');
+    this.emit('workflow:stage_started', { stage: 'parsing', claimId });
 
+    try {
+      const storageService = await getStorageService();
+      const visionService = getVisionService();
+      const llmService = getLLMService();
+
+      // Get document from storage
+      const documentBuffer = await storageService.getDocument(state.claim.documentId);
+      if (!documentBuffer) {
+        throw new Error('Document not found in storage');
+      }
+
+      // Run Vision analysis
+      logger.info('Running Vision analysis', { claimId, documentId: state.claim.documentId });
+      const layoutAnalysis = await visionService.analyzeLayout(documentBuffer);
+      const formFields = await visionService.extractFormFields(documentBuffer);
+
+      this.emit('workflow:stage_completed', { stage: 'parsing', claimId, layoutAnalysis });
+
+      // Stage 2: Extract structured data using LLM
+      await this.stateManager.transitionTo(claimId, 'extracting', 'Extracting fields with Claude');
+      this.emit('workflow:stage_started', { stage: 'extraction', claimId });
+
+      // Build OCR text from form fields
+      const ocrText = formFields.fields.map(f => `${f.label}: ${f.value}`).join('\n');
+
+      logger.info('Running LLM extraction', { claimId, fieldsFound: formFields.fields.length });
+      const extractionResult = await llmService.extractClaim({
+        ocrText: ocrText || 'No text extracted from document',
+        documentType: layoutAnalysis.documentType || 'unknown',
+        pageCount: 1,
+      });
+
+      // Build extracted claim
+      const extractedClaim: ExtractedClaim = {
+        id: claimId,
+        documentType: layoutAnalysis.documentType || 'unknown',
+        patient: extractionResult.claim.patient || {
+          memberId: 'UNKNOWN',
+          firstName: 'UNKNOWN',
+          lastName: 'UNKNOWN',
+          dateOfBirth: '1900-01-01',
+        },
+        provider: extractionResult.claim.provider || {
+          npi: '0000000000',
+          name: 'UNKNOWN',
+        },
+        diagnoses: extractionResult.claim.diagnoses || [],
+        serviceLines: extractionResult.claim.serviceLines || [],
+        totals: extractionResult.claim.totals || { totalCharges: 0 },
+        confidenceScores: extractionResult.confidenceScores,
+        provenance: {},
+      };
+
+      // Store extracted claim
+      await this.stateManager.setExtractedClaim(claimId, extractedClaim);
+      state.extractedClaim = extractedClaim;
+
+      this.emit('workflow:stage_completed', { stage: 'extraction', claimId, extractedClaim });
+      logger.info('Extraction completed', { claimId, confidence: extractionResult.confidenceScores });
+
+      // Check if extraction confidence is too low
+      const overallConfidence = extractionResult.confidenceScores.overall || 0;
+      if (overallConfidence < 0.5) {
+        logger.warn('Low extraction confidence, sending to review', { claimId, confidence: overallConfidence });
+        await this.stateManager.transitionTo(claimId, 'pending_review', 'Low extraction confidence');
+        const queueService = getQueueService();
+        await queueService.addToReview(claimId, `Low extraction confidence: ${(overallConfidence * 100).toFixed(1)}%`, state.claim.priority);
+        return {
+          success: false,
+          claimId,
+          finalStatus: 'pending_review',
+          error: 'Low extraction confidence - manual review required',
+          processingTimeMs: 0,
+        };
+      }
+
+      // Continue to validation
+      await this.stateManager.transitionTo(claimId, 'validating', 'Starting validation');
+      return this.runValidationAndBeyond(state);
+
+    } catch (error) {
+      logger.error('Pipeline extraction failed', { claimId, error });
+
+      // On extraction failure, send to manual review instead of failing
+      await this.stateManager.transitionTo(claimId, 'pending_review', 'Extraction failed - manual review required');
       const queueService = getQueueService();
-      await queueService.addToReview(claimId, 'No extracted data - manual entry required', state.claim.priority);
+      await queueService.addToReview(claimId, `Extraction error: ${error instanceof Error ? error.message : 'Unknown error'}`, state.claim.priority);
 
       return {
         success: false,
         claimId,
         finalStatus: 'pending_review',
-        error: 'Manual extraction required',
+        error: error instanceof Error ? error.message : 'Extraction failed',
         processingTimeMs: 0,
       };
     }
-
-    // Transition to validating
-    await this.stateManager.transitionTo(claimId, 'validating', 'Starting validation');
-
-    return this.runValidationAndBeyond(state);
   }
 
   private async runValidationAndBeyond(state: ClaimState): Promise<WorkflowResult> {
