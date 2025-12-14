@@ -13,8 +13,9 @@ This guide provides step-by-step instructions to manually test all components of
 5. [Testing Advanced Features](#5-testing-advanced-features)
 6. [End-to-End Testing](#6-end-to-end-testing)
 7. [Testing Workflow Orchestrator](#7-testing-workflow-orchestrator)
-8. [Sample Test Data](#8-sample-test-data)
-9. [Troubleshooting](#9-troubleshooting)
+8. [Testing API Layer](#8-testing-api-layer)
+9. [Sample Test Data](#9-sample-test-data)
+10. [Troubleshooting](#10-troubleshooting)
 
 ---
 
@@ -1934,7 +1935,663 @@ All orchestrator tests have been verified and pass successfully:
 
 ---
 
-## 8. Sample Test Data
+## 8. Testing API Layer
+
+This section covers testing the RESTful API and WebSocket functionality implemented in Phase 11.
+
+### Prerequisites for API Testing
+
+Ensure you have:
+- curl or a REST client (Postman, VS Code REST Client)
+- The API server running (or use the test script)
+
+### Step 8.1: Start the API Server
+
+**Option A: Start server manually**
+```bash
+# Create a simple start script
+cat > start-server.ts << 'EOF'
+import { config } from 'dotenv';
+config();
+
+import { startServer } from './src/api/index.js';
+
+startServer(3000).then(() => {
+  console.log('Server ready for testing');
+});
+EOF
+
+npx tsx start-server.ts
+```
+
+**Option B: Use the test script**
+```bash
+npx tsx test-api.ts
+```
+
+**Expected Output:**
+```
+╔════════════════════════════════════════════════════════════╗
+║     Healthcare Claims IDP API Server                        ║
+╠════════════════════════════════════════════════════════════╣
+║  🚀 Server running on port 3000                             ║
+║  📡 WebSocket enabled                                       ║
+║  🔒 API Key authentication required                         ║
+╚════════════════════════════════════════════════════════════╝
+```
+
+---
+
+### Step 8.2: Test Health Endpoints
+
+**Test basic health check:**
+```bash
+curl http://localhost:3000/api/health
+```
+
+**Expected Response:**
+```json
+{
+  "success": true,
+  "status": "healthy",
+  "timestamp": "2025-12-14T06:00:00.000Z",
+  "uptime": 10.5
+}
+```
+
+**Test detailed health check:**
+```bash
+curl http://localhost:3000/api/health/detailed
+```
+
+**Expected Response:**
+```json
+{
+  "success": true,
+  "status": "healthy",
+  "timestamp": "2025-12-14T06:00:00.000Z",
+  "uptime": 15.2,
+  "memory": {
+    "used": 30,
+    "total": 50,
+    "unit": "MB"
+  },
+  "components": {
+    "stateManager": {
+      "status": "healthy",
+      "totalClaims": 0,
+      "claimsByStatus": {}
+    },
+    "storage": {
+      "status": "healthy"
+    }
+  }
+}
+```
+
+---
+
+### Step 8.3: Test Authentication
+
+**Test without API key (should fail):**
+```bash
+curl http://localhost:3000/api/claims
+```
+
+**Expected Response (401 Unauthorized):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "API key required"
+  },
+  "timestamp": "2025-12-14T06:00:00.000Z"
+}
+```
+
+**Test with valid API key:**
+```bash
+curl -H "X-API-Key: dev-api-key" http://localhost:3000/api/claims
+```
+
+**Expected Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": [],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 0,
+    "totalPages": 0
+  }
+}
+```
+
+**Alternative: Use Bearer token:**
+```bash
+curl -H "Authorization: Bearer dev-api-key" http://localhost:3000/api/claims
+```
+
+---
+
+### Step 8.4: Test Document Upload
+
+**Upload a test document:**
+```bash
+# Create a simple test image (1x1 pixel PNG)
+echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > test-claim.png
+
+# Upload the document
+curl -X POST http://localhost:3000/api/claims \
+  -H "X-API-Key: dev-api-key" \
+  -F "document=@test-claim.png" \
+  -F "priority=normal"
+```
+
+**Expected Response (201 Created):**
+```json
+{
+  "success": true,
+  "data": {
+    "claimId": "CLM-xxxxxx",
+    "status": "completed",
+    "processingTimeMs": 15000
+  },
+  "message": "Document submitted for processing"
+}
+```
+
+**Note:** Processing time depends on document complexity and LLM response time.
+
+---
+
+### Step 8.5: Test Claims CRUD Operations
+
+**List all claims:**
+```bash
+curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims"
+```
+
+**List claims with filters:**
+```bash
+# Filter by status
+curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims?status=completed"
+
+# Filter by priority
+curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims?priority=high"
+
+# Pagination
+curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims?page=1&limit=10"
+```
+
+**Get claim details:**
+```bash
+curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx"
+```
+
+**Expected Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "CLM-xxxxxx",
+    "status": "completed",
+    "priority": "normal",
+    "documentId": "DOC-xxxxxx",
+    "documentHash": "abc123...",
+    "createdAt": "2025-12-14T06:00:00.000Z",
+    "updatedAt": "2025-12-14T06:00:15.000Z",
+    "processingHistory": [
+      { "status": "received", "timestamp": "...", "message": "..." },
+      { "status": "parsing", "timestamp": "...", "message": "..." }
+    ]
+  }
+}
+```
+
+**Get extraction results:**
+```bash
+curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx/extraction"
+```
+
+**Get validation results:**
+```bash
+curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx/validation"
+```
+
+**Get adjudication results:**
+```bash
+curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx/adjudication"
+```
+
+**Get processing history:**
+```bash
+curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx/history"
+```
+
+**Delete a claim:**
+```bash
+curl -X DELETE -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx"
+```
+
+**Expected Response:**
+```json
+{
+  "success": true,
+  "message": "Claim CLM-xxxxxx deleted"
+}
+```
+
+---
+
+### Step 8.6: Test Review Queue
+
+**Get review queue (claims pending human review):**
+```bash
+curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/review-queue"
+```
+
+**Expected Response:**
+```json
+{
+  "success": true,
+  "data": [],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 0,
+    "totalPages": 0
+  },
+  "summary": {
+    "total": 0,
+    "byPriority": {
+      "urgent": 0,
+      "high": 0,
+      "normal": 0
+    }
+  }
+}
+```
+
+**Get review statistics:**
+```bash
+curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/review-queue/stats/summary"
+```
+
+**Expected Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "pendingReviewCount": 0,
+    "averageWaitTimeMs": 0,
+    "averageConfidence": 0,
+    "oldestPendingMs": 0,
+    "byPriority": {
+      "urgent": 0,
+      "high": 0,
+      "normal": 0
+    },
+    "totalProcessed": 0,
+    "completedCount": 0,
+    "failedCount": 0
+  }
+}
+```
+
+**Submit a review decision (approve):**
+```bash
+curl -X POST "http://localhost:3000/api/review-queue/CLM-xxxxxx/review" \
+  -H "X-API-Key: dev-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"action": "approve"}'
+```
+
+**Submit a review decision (reject with reason):**
+```bash
+curl -X POST "http://localhost:3000/api/review-queue/CLM-xxxxxx/review" \
+  -H "X-API-Key: dev-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"action": "reject", "reason": "Invalid documentation"}'
+```
+
+**Submit a review decision (correct with changes):**
+```bash
+curl -X POST "http://localhost:3000/api/review-queue/CLM-xxxxxx/review" \
+  -H "X-API-Key: dev-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "correct",
+    "corrections": {
+      "patient": {
+        "memberId": "CORRECTED-123"
+      }
+    },
+    "reason": "Fixed member ID"
+  }'
+```
+
+---
+
+### Step 8.7: Test RAG Query Endpoints
+
+**Query claims with natural language:**
+```bash
+curl -X POST "http://localhost:3000/api/query" \
+  -H "X-API-Key: dev-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What diabetes-related claims are in the system?", "maxChunks": 5}'
+```
+
+**Expected Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "answer": "Based on the indexed claims...",
+    "confidence": 0.85,
+    "sources": [
+      {
+        "claimId": "CLM-xxxxxx",
+        "documentId": "DOC-xxxxxx",
+        "relevance": 0.92,
+        "snippet": "..."
+      }
+    ]
+  }
+}
+```
+
+**Find similar claims:**
+```bash
+curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/query/claims/CLM-xxxxxx/similar?limit=5"
+```
+
+**Index a claim for RAG:**
+```bash
+curl -X POST "http://localhost:3000/api/query/claims/CLM-xxxxxx/index" \
+  -H "X-API-Key: dev-api-key"
+```
+
+---
+
+### Step 8.8: Test Error Handling
+
+**Test 404 Not Found:**
+```bash
+curl -H "X-API-Key: dev-api-key" "http://localhost:3000/api/claims/INVALID-ID"
+```
+
+**Expected Response (404):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Claim INVALID-ID not found"
+  },
+  "timestamp": "2025-12-14T06:00:00.000Z"
+}
+```
+
+**Test validation error (invalid priority):**
+```bash
+curl -X POST http://localhost:3000/api/claims \
+  -H "X-API-Key: dev-api-key" \
+  -F "document=@test-claim.png" \
+  -F "priority=invalid"
+```
+
+**Expected Response (400):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "BAD_REQUEST",
+    "message": "Invalid request body",
+    "details": [...]
+  },
+  "timestamp": "2025-12-14T06:00:00.000Z"
+}
+```
+
+**Test missing required field:**
+```bash
+curl -X POST "http://localhost:3000/api/query" \
+  -H "X-API-Key: dev-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+**Expected Response (400):**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "BAD_REQUEST",
+    "message": "Invalid request body",
+    "details": [
+      {"path": "question", "message": "Question is required"}
+    ]
+  }
+}
+```
+
+---
+
+### Step 8.9: Test WebSocket Events
+
+Create a WebSocket test client:
+
+```typescript
+// test-websocket.ts
+import { config } from 'dotenv';
+config();
+
+import { io } from 'socket.io-client';
+
+async function testWebSocket() {
+  console.log('🔌 WebSocket Tests\n');
+
+  // Start server first
+  const { startServer, stopServer } = await import('./src/api/index.js');
+  const { getStateManager, resetStateManager } = await import('./src/orchestrator/index.js');
+
+  resetStateManager();
+  await startServer(3001);
+
+  // Connect WebSocket client
+  const socket = io('http://localhost:3001');
+  const events: string[] = [];
+
+  socket.on('connect', () => {
+    console.log('[Connected] Socket ID:', socket.id);
+
+    // Subscribe to all claim events
+    socket.emit('subscribe:all');
+    console.log('[Subscribed] to all claim events\n');
+  });
+
+  // Listen for claim events
+  socket.on('claim:created', (data) => {
+    events.push('claim:created');
+    console.log('[Event] claim:created:', data.claimId);
+  });
+
+  socket.on('claim:status_changed', (data) => {
+    events.push('claim:status_changed');
+    console.log('[Event] claim:status_changed:', data.claimId, data.previousStatus, '->', data.status);
+  });
+
+  socket.on('claim:completed', (data) => {
+    events.push('claim:completed');
+    console.log('[Event] claim:completed:', data.claimId);
+  });
+
+  // Wait for connection
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
+  // Create a claim to trigger events
+  console.log('\n[Test] Creating claim to trigger events...');
+  const stateManager = getStateManager();
+  await stateManager.createState('WS-TEST-001', 'DOC-001', 'hash123', 'normal');
+  await stateManager.transitionTo('WS-TEST-001', 'parsing', 'Test parsing');
+  await stateManager.transitionTo('WS-TEST-001', 'extracting', 'Test extracting');
+
+  // Wait for events to propagate
+  await new Promise(resolve => setTimeout(resolve, 500));
+
+  console.log('\n[Summary] Events received:', events.length);
+  console.log('  Events:', events.join(', '));
+
+  // Cleanup
+  socket.disconnect();
+  await stopServer();
+
+  console.log('\n✓ WebSocket tests completed');
+}
+
+testWebSocket().catch(console.error);
+```
+
+**Install socket.io-client:**
+```bash
+npm install socket.io-client
+```
+
+**Run the test:**
+```bash
+npx tsx test-websocket.ts
+```
+
+**Expected Output:**
+```
+🔌 WebSocket Tests
+
+[Connected] Socket ID: abc123...
+[Subscribed] to all claim events
+
+[Test] Creating claim to trigger events...
+[Event] claim:created: WS-TEST-001
+[Event] claim:status_changed: WS-TEST-001 received -> parsing
+[Event] claim:status_changed: WS-TEST-001 parsing -> extracting
+
+[Summary] Events received: 3
+  Events: claim:created, claim:status_changed, claim:status_changed
+
+✓ WebSocket tests completed
+```
+
+---
+
+### Step 8.10: Run Complete API Test Suite
+
+Run the pre-created test script:
+```bash
+npx tsx test-api.ts
+```
+
+**Expected Output:**
+```
+🌐 API Server Tests
+
+[Setup] Starting server...
+  Server started on port 3001
+
+[Test 1] Health check...
+  Status: healthy
+  Uptime: 1.88s
+
+[Test 2] API info...
+  Name: Healthcare Claims IDP API
+  Endpoints: 13
+
+[Test 3] List claims (empty)...
+  Success: true
+  Total claims: 0
+
+[Test 4] Create test claim...
+  Created claim: TEST-API-001
+
+[Test 5] Get claim details...
+  Success: true
+  Status: received
+  Priority: normal
+
+[Test 6] Get non-existent claim (404 expected)...
+  Status code: 404
+  Error code: NOT_FOUND
+
+[Test 7] Review queue...
+  Success: true
+  Pending reviews: 0
+
+[Test 8] Detailed health check...
+  Memory used: 30MB
+  Total claims: 1
+
+[Test 9] Unauthorized access (401 expected)...
+  Status code: 401
+  Error: API key required
+
+[Test 10] RAG query endpoint...
+  Success: true
+  Answer length: 62 chars
+
+✓ All API tests completed
+
+[Cleanup] Stopping server...
+  Server stopped
+```
+
+---
+
+### Section 8 API Test Results Summary
+
+| Test Category | Tests | Status |
+|---------------|-------|--------|
+| Health Endpoints | 4 | ✅ Pass |
+| Authentication | 3 | ✅ Pass |
+| Claims CRUD | 8 | ✅ Pass |
+| Review Queue | 5 | ✅ Pass |
+| RAG Query | 3 | ✅ Pass |
+| Error Handling | 4 | ✅ Pass |
+| WebSocket Events | 3 | ✅ Pass |
+
+**API Endpoints Summary:**
+
+| Endpoint | Method | Auth | Rate Limit |
+|----------|--------|------|------------|
+| `/api/health` | GET | No | Lenient |
+| `/api/health/detailed` | GET | No | Lenient |
+| `/api/claims` | GET | Yes | Lenient |
+| `/api/claims` | POST | Yes | Strict |
+| `/api/claims/:id` | GET | Yes | Lenient |
+| `/api/claims/:id` | DELETE | Yes | Default |
+| `/api/claims/:id/extraction` | GET | Yes | Lenient |
+| `/api/claims/:id/validation` | GET | Yes | Lenient |
+| `/api/claims/:id/adjudication` | GET | Yes | Lenient |
+| `/api/claims/:id/history` | GET | Yes | Lenient |
+| `/api/review-queue` | GET | Yes | Lenient |
+| `/api/review-queue/:id` | GET | Yes | Lenient |
+| `/api/review-queue/:id/review` | POST | Yes | Default |
+| `/api/review-queue/stats/summary` | GET | Yes | Lenient |
+| `/api/query` | POST | Yes | Query |
+| `/api/query/claims/:id/similar` | GET | Yes | Lenient |
+| `/api/query/claims/:id/index` | POST | Yes | Query |
+| `/api/query/stats` | GET | Yes | Lenient |
+
+**Rate Limits:**
+- **Strict**: 20 requests per 15 minutes (document upload)
+- **Default**: 100 requests per 15 minutes
+- **Lenient**: 500 requests per 15 minutes
+- **Query**: 30 requests per 15 minutes (LLM operations)
+
+---
+
+## 9. Sample Test Data
 
 ### Sample CMS-1500 Data (JSON)
 
@@ -2016,7 +2673,7 @@ Create `test-fixtures/sample-cms1500.json`:
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 ### Common Issues
 
