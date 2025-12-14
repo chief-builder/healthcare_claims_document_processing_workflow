@@ -12,8 +12,9 @@ This guide provides step-by-step instructions to manually test all components of
 4. [Testing Agents](#4-testing-agents)
 5. [Testing Advanced Features](#5-testing-advanced-features)
 6. [End-to-End Testing](#6-end-to-end-testing)
-7. [Sample Test Data](#7-sample-test-data)
-8. [Troubleshooting](#8-troubleshooting)
+7. [Testing Workflow Orchestrator](#7-testing-workflow-orchestrator)
+8. [Sample Test Data](#8-sample-test-data)
+9. [Troubleshooting](#9-troubleshooting)
 
 ---
 
@@ -1298,7 +1299,691 @@ npx tsx test-e2e.ts
 
 ---
 
-## 7. Sample Test Data
+## 7. Testing Workflow Orchestrator
+
+The Workflow Orchestrator provides automated claim processing with state management, confidence-based routing, and human review integration.
+
+### Step 7.1: Run Orchestrator Test Script
+
+The orchestrator test script (`test-orchestrator.ts`) is already created. Run it to test all orchestrator functionality:
+
+```bash
+npx tsx test-orchestrator.ts
+```
+
+**Expected Output:**
+```
+╔════════════════════════════════════════════════════════════╗
+║          PHASE 10 - ORCHESTRATOR TEST SUITE                ║
+╚════════════════════════════════════════════════════════════╝
+
+============================================================
+STATE MANAGER TESTS
+============================================================
+
+[Test 1] Creating claim state...
+  ✓ State created: CLM-TEST-001
+  ✓ Initial status: received
+
+[Test 2] Transitioning claim state...
+  ✓ Transitioned to: parsing
+  ✓ Transitioned to: extracting
+
+[Test 3] Setting extracted claim...
+  ✓ Extracted claim set: true
+  ✓ Patient name: John
+
+[Test 4] Determining next action based on confidence...
+  - Confidence 0.90: auto_process
+  - Confidence 0.75: correct
+  - Confidence 0.50: review
+
+...
+
+ALL ORCHESTRATOR TESTS COMPLETED SUCCESSFULLY
+```
+
+### Step 7.2: Understanding Orchestrator Components
+
+#### State Manager (`src/orchestrator/state.ts`)
+
+Manages claim state transitions and persistence:
+
+| Status | Description | Valid Transitions To |
+|--------|-------------|---------------------|
+| `received` | Initial state | parsing, failed |
+| `parsing` | Document being parsed | extracting, failed |
+| `extracting` | Fields being extracted | validating, failed |
+| `validating` | Validation in progress | correcting, pending_review, adjudicating, failed |
+| `correcting` | Auto-correction attempt | validating, pending_review, failed |
+| `pending_review` | Needs human review | validating, adjudicating, completed, failed |
+| `adjudicating` | Payment processing | completed, pending_review, failed |
+| `completed` | Successfully processed | (terminal) |
+| `failed` | Processing failed | received (retry) |
+
+#### Workflow Orchestrator (`src/orchestrator/workflow.ts`)
+
+Orchestrates the full pipeline with confidence-based routing:
+
+| Confidence Score | Action | Description |
+|-----------------|--------|-------------|
+| ≥ 85% | `auto_process` | Proceed to adjudication automatically |
+| 60-84% | `correct` | Attempt auto-correction, then revalidate |
+| < 60% | `review` | Route to human review queue |
+
+### Step 7.3: Test State Manager Individually
+
+Create `test-state-manager.ts`:
+
+```typescript
+// test-state-manager.ts
+import { config } from 'dotenv';
+config();
+
+async function testStateManager() {
+  console.log('📊 State Manager Tests\n');
+
+  const {
+    getStateManager,
+    resetStateManager,
+  } = await import('./src/orchestrator/index.js');
+
+  // Reset for clean test
+  resetStateManager();
+  const stateManager = getStateManager();
+
+  // Test 1: Create a new claim state
+  console.log('[Test 1] Creating claim state...');
+  const state = await stateManager.createState(
+    'CLM-SM-001',
+    'DOC-001',
+    'hash12345',
+    'normal',
+    { source: 'manual-test' }
+  );
+  console.log(`  ✓ Created: ${state.claim.id}`);
+  console.log(`  ✓ Status: ${state.claim.status}`);
+  console.log(`  ✓ Priority: ${state.claim.priority}`);
+
+  // Test 2: Transition through states
+  console.log('\n[Test 2] Transitioning states...');
+  await stateManager.transitionTo('CLM-SM-001', 'parsing', 'Starting parse');
+  await stateManager.transitionTo('CLM-SM-001', 'extracting', 'Extracting fields');
+  await stateManager.transitionTo('CLM-SM-001', 'validating', 'Validating');
+
+  const updatedState = await stateManager.getState('CLM-SM-001');
+  console.log(`  ✓ Current status: ${updatedState?.claim.status}`);
+  console.log(`  ✓ History entries: ${updatedState?.claim.processingHistory.length}`);
+
+  // Test 3: Get statistics
+  console.log('\n[Test 3] Getting statistics...');
+  const stats = stateManager.getStatistics();
+  console.log(`  ✓ Total claims: ${stats.total}`);
+  console.log(`  ✓ Status breakdown: ${JSON.stringify(stats.byStatus)}`);
+
+  // Test 4: Confidence-based routing
+  console.log('\n[Test 4] Confidence-based routing...');
+  const thresholds = [0.90, 0.75, 0.50, 0.30];
+  for (const conf of thresholds) {
+    const action = stateManager.determineNextAction(conf);
+    console.log(`  Confidence ${(conf * 100).toFixed(0)}% -> ${action}`);
+  }
+
+  // Test 5: Invalid transition (should throw)
+  console.log('\n[Test 5] Testing invalid transition...');
+  try {
+    await stateManager.transitionTo('CLM-SM-001', 'completed', 'Skip to end');
+    console.log('  ✗ Should have thrown error');
+  } catch (error) {
+    console.log(`  ✓ Correctly rejected: ${(error as Error).message}`);
+  }
+
+  console.log('\n✓ State Manager tests completed');
+}
+
+testStateManager().catch(console.error);
+```
+
+Run:
+```bash
+npx tsx test-state-manager.ts
+```
+
+### Step 7.4: Test Workflow Orchestrator with Pre-Extracted Claims
+
+Create `test-workflow.ts`:
+
+```typescript
+// test-workflow.ts
+import { config } from 'dotenv';
+config();
+
+import { ExtractedClaim } from './src/models/index.js';
+
+// Create a sample claim matching ExtractedClaim schema
+function createTestClaim(id: string, confidence: number = 0.9): ExtractedClaim {
+  return {
+    id,
+    documentType: 'cms_1500',
+    patient: {
+      memberId: 'MEM123456789',
+      firstName: 'John',
+      lastName: 'Smith',
+      dateOfBirth: '1985-03-15',
+      gender: 'M',
+      address: {
+        street1: '123 Main St',
+        city: 'Springfield',
+        state: 'IL',
+        zipCode: '62701',
+        country: 'US',
+      },
+    },
+    provider: {
+      npi: '1234567893', // Valid NPI
+      name: 'Primary Care Associates',
+      taxId: '123456789',
+      specialty: 'Family Medicine',
+    },
+    diagnoses: [
+      { code: 'E11.9', description: 'Type 2 diabetes', isPrimary: true },
+    ],
+    serviceLines: [
+      {
+        lineNumber: 1,
+        dateOfService: '2024-01-15',
+        procedureCode: '99213',
+        modifiers: [],
+        diagnosisPointers: ['A'],
+        units: 1,
+        chargeAmount: 150.00,
+        placeOfService: '11',
+      },
+    ],
+    totals: {
+      totalCharges: 150.00,
+      amountPaid: 0,
+      patientResponsibility: 0,
+    },
+    statementDate: '2024-01-15',
+    confidenceScores: {
+      patient: confidence,
+      provider: confidence,
+      diagnoses: confidence,
+      serviceLines: confidence,
+      totals: confidence,
+      overall: confidence,
+    },
+    provenance: {},
+  };
+}
+
+async function testWorkflow() {
+  console.log('🔄 Workflow Orchestrator Tests\n');
+
+  const {
+    getWorkflowOrchestrator,
+    resetWorkflowOrchestrator,
+    resetStateManager,
+  } = await import('./src/orchestrator/index.js');
+
+  // Reset for clean test
+  resetStateManager();
+  resetWorkflowOrchestrator();
+
+  const orchestrator = getWorkflowOrchestrator({
+    enableRAGIndexing: false, // Disable for faster tests
+    enableQualityAssessment: false,
+  });
+
+  // Track events
+  const events: string[] = [];
+  orchestrator.on('workflow:started', (d) => events.push(`started:${d.claimId}`));
+  orchestrator.on('workflow:completed', (d) => events.push(`completed:${d.claimId}`));
+  orchestrator.on('workflow:failed', (d) => events.push(`failed:${d.claimId}`));
+  orchestrator.on('workflow:review_required', (d) => events.push(`review:${d.claimId}`));
+
+  // Test 1: High-confidence claim (should auto-process)
+  console.log('[Test 1] High-confidence claim (92%)...');
+  resetStateManager();
+  const highConfClaim = createTestClaim('CLM-HIGH-001', 0.92);
+  const result1 = await orchestrator.processExtractedClaim(highConfClaim, 'normal');
+
+  console.log(`  Success: ${result1.success}`);
+  console.log(`  Final Status: ${result1.finalStatus}`);
+  console.log(`  Processing Time: ${result1.processingTimeMs}ms`);
+
+  // Test 2: Medium-confidence claim (should attempt correction)
+  console.log('\n[Test 2] Medium-confidence claim (70%)...');
+  resetStateManager();
+  const medConfClaim = createTestClaim('CLM-MED-001', 0.70);
+  const result2 = await orchestrator.processExtractedClaim(medConfClaim, 'normal');
+
+  console.log(`  Success: ${result2.success}`);
+  console.log(`  Final Status: ${result2.finalStatus}`);
+  console.log(`  Processing Time: ${result2.processingTimeMs}ms`);
+
+  // Test 3: Priority handling
+  console.log('\n[Test 3] Urgent priority claim...');
+  resetStateManager();
+  const urgentClaim = createTestClaim('CLM-URGENT-001', 0.95);
+  const result3 = await orchestrator.processExtractedClaim(urgentClaim, 'urgent');
+
+  console.log(`  Success: ${result3.success}`);
+  console.log(`  Final Status: ${result3.finalStatus}`);
+
+  // Test 4: Get workflow statistics
+  console.log('\n[Test 4] Workflow statistics...');
+  const stats = orchestrator.getStatistics();
+  console.log(`  Total claims: ${stats.stateStats.total}`);
+  console.log(`  Auto-process threshold: ${stats.config.autoProcessThreshold}`);
+  console.log(`  Correction threshold: ${stats.config.correctionThreshold}`);
+
+  // Test 5: Events captured
+  console.log('\n[Test 5] Events captured...');
+  console.log(`  Total events: ${events.length}`);
+  console.log(`  Events: ${events.join(', ')}`);
+
+  console.log('\n✓ Workflow Orchestrator tests completed');
+}
+
+testWorkflow().catch(console.error);
+```
+
+Run:
+```bash
+npx tsx test-workflow.ts
+```
+
+### Step 7.5: Test Human Review Workflow
+
+Create `test-review-workflow.ts`:
+
+```typescript
+// test-review-workflow.ts
+import { config } from 'dotenv';
+config();
+
+import { ExtractedClaim } from './src/models/index.js';
+
+function createTestClaim(id: string, confidence: number = 0.9): ExtractedClaim {
+  return {
+    id,
+    documentType: 'cms_1500',
+    patient: {
+      memberId: 'MEM123456789',
+      firstName: 'John',
+      lastName: 'Smith',
+      dateOfBirth: '1985-03-15',
+    },
+    provider: {
+      npi: '1234567893',
+      name: 'Primary Care Associates',
+    },
+    diagnoses: [
+      { code: 'E11.9', isPrimary: true },
+    ],
+    serviceLines: [
+      {
+        lineNumber: 1,
+        dateOfService: '2024-01-15',
+        procedureCode: '99213',
+        modifiers: [],
+        diagnosisPointers: ['A'],
+        units: 1,
+        chargeAmount: 150.00,
+      },
+    ],
+    totals: { totalCharges: 150.00 },
+    confidenceScores: { overall: confidence },
+    provenance: {},
+  };
+}
+
+async function testReviewWorkflow() {
+  console.log('👤 Human Review Workflow Tests\n');
+
+  const {
+    getStateManager,
+    getWorkflowOrchestrator,
+    resetStateManager,
+    resetWorkflowOrchestrator,
+  } = await import('./src/orchestrator/index.js');
+
+  resetStateManager();
+  resetWorkflowOrchestrator();
+
+  const stateManager = getStateManager();
+  const orchestrator = getWorkflowOrchestrator({ enableRAGIndexing: false });
+
+  // Setup: Create a claim in pending_review state
+  console.log('[Setup] Creating claim for review...');
+  await stateManager.createState('CLM-REVIEW-001', 'DOC-001', 'hash123', 'normal');
+  await stateManager.transitionTo('CLM-REVIEW-001', 'parsing', 'Parsing');
+  await stateManager.transitionTo('CLM-REVIEW-001', 'extracting', 'Extracting');
+
+  const claim = createTestClaim('CLM-REVIEW-001', 0.5);
+  await stateManager.setExtractedClaim('CLM-REVIEW-001', claim);
+  await stateManager.transitionTo('CLM-REVIEW-001', 'validating', 'Validating');
+  await stateManager.transitionTo('CLM-REVIEW-001', 'pending_review', 'Low confidence');
+
+  const pendingState = await stateManager.getState('CLM-REVIEW-001');
+  console.log(`  Claim status: ${pendingState?.claim.status}`);
+
+  // Test 1: Approve review
+  console.log('\n[Test 1] Approve review...');
+  const approveResult = await orchestrator.submitReview('CLM-REVIEW-001', 'approve');
+  console.log(`  Result: ${approveResult.success ? 'Success' : 'Failed'}`);
+  console.log(`  Final status: ${approveResult.finalStatus}`);
+
+  // Setup for rejection test
+  console.log('\n[Setup] Creating another claim for rejection...');
+  resetStateManager();
+  await stateManager.createState('CLM-REVIEW-002', 'DOC-002', 'hash456', 'normal');
+  await stateManager.transitionTo('CLM-REVIEW-002', 'parsing', 'Parsing');
+  await stateManager.transitionTo('CLM-REVIEW-002', 'extracting', 'Extracting');
+  const claim2 = createTestClaim('CLM-REVIEW-002', 0.5);
+  await stateManager.setExtractedClaim('CLM-REVIEW-002', claim2);
+  await stateManager.transitionTo('CLM-REVIEW-002', 'validating', 'Validating');
+  await stateManager.transitionTo('CLM-REVIEW-002', 'pending_review', 'Low confidence');
+
+  // Test 2: Reject review
+  console.log('\n[Test 2] Reject review...');
+  const rejectResult = await orchestrator.submitReview(
+    'CLM-REVIEW-002',
+    'reject',
+    undefined,
+    'Invalid documentation provided'
+  );
+  console.log(`  Result: ${rejectResult.success ? 'Success' : 'Rejected'}`);
+  console.log(`  Final status: ${rejectResult.finalStatus}`);
+  console.log(`  Error message: ${rejectResult.error}`);
+
+  // Setup for correction test
+  console.log('\n[Setup] Creating claim for correction...');
+  resetStateManager();
+  await stateManager.createState('CLM-REVIEW-003', 'DOC-003', 'hash789', 'normal');
+  await stateManager.transitionTo('CLM-REVIEW-003', 'parsing', 'Parsing');
+  await stateManager.transitionTo('CLM-REVIEW-003', 'extracting', 'Extracting');
+  const claim3 = createTestClaim('CLM-REVIEW-003', 0.5);
+  await stateManager.setExtractedClaim('CLM-REVIEW-003', claim3);
+  await stateManager.transitionTo('CLM-REVIEW-003', 'validating', 'Validating');
+  await stateManager.transitionTo('CLM-REVIEW-003', 'pending_review', 'Low confidence');
+
+  // Test 3: Correct and resubmit
+  console.log('\n[Test 3] Submit with corrections...');
+  const corrections = {
+    patient: {
+      memberId: 'MEM987654321', // Corrected member ID
+      firstName: 'John',
+      lastName: 'Smith',
+      dateOfBirth: '1985-03-15',
+    },
+  };
+
+  const correctResult = await orchestrator.submitReview(
+    'CLM-REVIEW-003',
+    'correct',
+    corrections as Partial<ExtractedClaim>,
+    'Corrected member ID'
+  );
+  console.log(`  Result: ${correctResult.success ? 'Success' : 'Failed'}`);
+  console.log(`  Final status: ${correctResult.finalStatus}`);
+
+  console.log('\n✓ Human Review Workflow tests completed');
+}
+
+testReviewWorkflow().catch(console.error);
+```
+
+Run:
+```bash
+npx tsx test-review-workflow.ts
+```
+
+### Step 7.6: Test Concurrent Processing
+
+Create `test-concurrent.ts`:
+
+```typescript
+// test-concurrent.ts
+import { config } from 'dotenv';
+config();
+
+import { ExtractedClaim } from './src/models/index.js';
+
+function createTestClaim(id: string, confidence: number): ExtractedClaim {
+  return {
+    id,
+    documentType: 'cms_1500',
+    patient: {
+      memberId: `MEM-${id}`,
+      firstName: 'Patient',
+      lastName: id,
+      dateOfBirth: '1985-03-15',
+    },
+    provider: { npi: '1234567893', name: 'Test Provider' },
+    diagnoses: [{ code: 'E11.9', isPrimary: true }],
+    serviceLines: [{
+      lineNumber: 1,
+      dateOfService: '2024-01-15',
+      procedureCode: '99213',
+      modifiers: [],
+      diagnosisPointers: ['A'],
+      units: 1,
+      chargeAmount: 150.00,
+    }],
+    totals: { totalCharges: 150.00 },
+    confidenceScores: { overall: confidence },
+    provenance: {},
+  };
+}
+
+async function testConcurrent() {
+  console.log('⚡ Concurrent Processing Tests\n');
+
+  const {
+    getWorkflowOrchestrator,
+    resetStateManager,
+    resetWorkflowOrchestrator,
+  } = await import('./src/orchestrator/index.js');
+
+  resetStateManager();
+  resetWorkflowOrchestrator();
+
+  const orchestrator = getWorkflowOrchestrator({ enableRAGIndexing: false });
+
+  // Test: Process multiple claims in parallel
+  console.log('[Test] Processing 5 claims concurrently...\n');
+
+  const claims = [
+    createTestClaim('BATCH-001', 0.95),
+    createTestClaim('BATCH-002', 0.88),
+    createTestClaim('BATCH-003', 0.72),
+    createTestClaim('BATCH-004', 0.91),
+    createTestClaim('BATCH-005', 0.65),
+  ];
+
+  const startTime = Date.now();
+
+  // Process all claims concurrently
+  const results = await Promise.all(
+    claims.map(claim => orchestrator.processExtractedClaim(claim, 'normal'))
+  );
+
+  const totalTime = Date.now() - startTime;
+
+  // Display results
+  console.log('Results:');
+  console.log('─'.repeat(60));
+  console.log('Claim ID       | Confidence | Status      | Time (ms)');
+  console.log('─'.repeat(60));
+
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    const conf = claims[i].confidenceScores.overall;
+    console.log(
+      `${r.claimId.padEnd(14)} | ${(conf * 100).toFixed(0).padStart(5)}%     | ${r.finalStatus.padEnd(11)} | ${r.processingTimeMs.toString().padStart(5)}`
+    );
+  }
+
+  console.log('─'.repeat(60));
+  console.log(`\nTotal time: ${totalTime}ms`);
+  console.log(`Average time per claim: ${(totalTime / claims.length).toFixed(0)}ms`);
+
+  const successCount = results.filter(r => r.success).length;
+  console.log(`Success rate: ${(successCount / results.length * 100).toFixed(0)}%`);
+
+  // Statistics
+  console.log('\nFinal Statistics:');
+  const stats = orchestrator.getStatistics();
+  console.log(`  Total processed: ${stats.stateStats.total}`);
+  console.log(`  Completed: ${stats.stateStats.byStatus.completed}`);
+  console.log(`  Pending review: ${stats.stateStats.byStatus.pending_review}`);
+  console.log(`  Failed: ${stats.stateStats.byStatus.failed}`);
+
+  console.log('\n✓ Concurrent Processing tests completed');
+}
+
+testConcurrent().catch(console.error);
+```
+
+Run:
+```bash
+npx tsx test-concurrent.ts
+```
+
+### Step 7.7: Test Event Monitoring
+
+Create `test-events.ts`:
+
+```typescript
+// test-events.ts
+import { config } from 'dotenv';
+config();
+
+import { ExtractedClaim } from './src/models/index.js';
+
+function createTestClaim(id: string): ExtractedClaim {
+  return {
+    id,
+    documentType: 'cms_1500',
+    patient: {
+      memberId: 'MEM123456789',
+      firstName: 'John',
+      lastName: 'Smith',
+      dateOfBirth: '1985-03-15',
+    },
+    provider: { npi: '1234567893', name: 'Test Provider' },
+    diagnoses: [{ code: 'E11.9', isPrimary: true }],
+    serviceLines: [{
+      lineNumber: 1,
+      dateOfService: '2024-01-15',
+      procedureCode: '99213',
+      modifiers: [],
+      diagnosisPointers: ['A'],
+      units: 1,
+      chargeAmount: 150.00,
+    }],
+    totals: { totalCharges: 150.00 },
+    confidenceScores: { overall: 0.90 },
+    provenance: {},
+  };
+}
+
+async function testEvents() {
+  console.log('📡 Event Monitoring Tests\n');
+
+  const {
+    getWorkflowOrchestrator,
+    getStateManager,
+    resetStateManager,
+    resetWorkflowOrchestrator,
+  } = await import('./src/orchestrator/index.js');
+
+  resetStateManager();
+  resetWorkflowOrchestrator();
+
+  const stateManager = getStateManager();
+  const orchestrator = getWorkflowOrchestrator({ enableRAGIndexing: false });
+
+  // Track all events
+  const eventLog: Array<{ time: number; type: string; data: unknown }> = [];
+  const startTime = Date.now();
+
+  // State Manager events
+  stateManager.on('state:created', (data) => {
+    eventLog.push({ time: Date.now() - startTime, type: 'state:created', data });
+    console.log(`  [${Date.now() - startTime}ms] state:created - ${data.claimId}`);
+  });
+
+  stateManager.on('state:transition', (data) => {
+    eventLog.push({ time: Date.now() - startTime, type: 'state:transition', data });
+    console.log(`  [${Date.now() - startTime}ms] state:transition - ${data.fromStatus} -> ${data.toStatus}`);
+  });
+
+  stateManager.on('state:completed', (data) => {
+    eventLog.push({ time: Date.now() - startTime, type: 'state:completed', data });
+    console.log(`  [${Date.now() - startTime}ms] state:completed - ${data.claimId}`);
+  });
+
+  // Workflow events
+  orchestrator.on('workflow:started', (data) => {
+    eventLog.push({ time: Date.now() - startTime, type: 'workflow:started', data });
+    console.log(`  [${Date.now() - startTime}ms] workflow:started - ${data.claimId}`);
+  });
+
+  orchestrator.on('workflow:stage_started', (data) => {
+    eventLog.push({ time: Date.now() - startTime, type: 'workflow:stage_started', data });
+    console.log(`  [${Date.now() - startTime}ms] workflow:stage_started - ${data.stage}`);
+  });
+
+  orchestrator.on('workflow:stage_completed', (data) => {
+    eventLog.push({ time: Date.now() - startTime, type: 'workflow:stage_completed', data });
+    console.log(`  [${Date.now() - startTime}ms] workflow:stage_completed - ${data.stage}`);
+  });
+
+  orchestrator.on('workflow:completed', (data) => {
+    eventLog.push({ time: Date.now() - startTime, type: 'workflow:completed', data });
+    console.log(`  [${Date.now() - startTime}ms] workflow:completed - ${data.claimId}`);
+  });
+
+  // Process a claim
+  console.log('[Test] Processing claim with event monitoring...\n');
+  const claim = createTestClaim('CLM-EVENTS-001');
+  await orchestrator.processExtractedClaim(claim, 'normal');
+
+  // Summary
+  console.log('\n─'.repeat(50));
+  console.log('Event Summary:');
+  console.log('─'.repeat(50));
+
+  const eventCounts: Record<string, number> = {};
+  for (const event of eventLog) {
+    eventCounts[event.type] = (eventCounts[event.type] || 0) + 1;
+  }
+
+  for (const [type, count] of Object.entries(eventCounts).sort()) {
+    console.log(`  ${type}: ${count}`);
+  }
+
+  console.log(`\nTotal events: ${eventLog.length}`);
+  console.log(`Total time: ${Date.now() - startTime}ms`);
+
+  console.log('\n✓ Event Monitoring tests completed');
+}
+
+testEvents().catch(console.error);
+```
+
+Run:
+```bash
+npx tsx test-events.ts
+```
+
+---
+
+## 8. Sample Test Data
 
 ### Sample CMS-1500 Data (JSON)
 
@@ -1380,7 +2065,7 @@ Create `test-fixtures/sample-cms1500.json`:
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 ### Common Issues
 
@@ -1463,6 +2148,14 @@ npx tsx test-vision.ts
 
 # End-to-End Test
 npx tsx test-e2e.ts
+
+# Orchestrator Tests (Section 7)
+npx tsx test-orchestrator.ts       # All orchestrator tests
+npx tsx test-state-manager.ts      # State manager only
+npx tsx test-workflow.ts           # Workflow orchestrator only
+npx tsx test-review-workflow.ts    # Human review workflow
+npx tsx test-concurrent.ts         # Concurrent processing
+npx tsx test-events.ts             # Event monitoring
 ```
 
 ### Expected Test Duration
@@ -1479,6 +2172,12 @@ npx tsx test-e2e.ts
 | RAG | 10-20s (API calls) |
 | Vision | 10-30s (API calls) |
 | E2E | 30-60s |
+| Orchestrator (all) | 1-3s |
+| State Manager | < 1s |
+| Workflow | 1-2s |
+| Review Workflow | 1-2s |
+| Concurrent | < 1s |
+| Events | < 1s |
 
 ---
 
@@ -1488,6 +2187,12 @@ After manual testing passes:
 
 1. **Write automated unit tests** in `tests/unit/`
 2. **Set up CI/CD** with GitHub Actions
-3. **Implement API server** (Phase 5-6 of implementation plan)
+3. **Implement API Layer** (Phase 11 of enhancement plan)
+   - REST API endpoints for claim submission
+   - WebSocket support for real-time status updates
 4. **Create integration tests** for the API
 5. **Add load testing** for performance validation
+6. **Production hardening** (Phase 14 of enhancement plan)
+   - Error recovery and retry mechanisms
+   - Monitoring and alerting
+   - Security audit
