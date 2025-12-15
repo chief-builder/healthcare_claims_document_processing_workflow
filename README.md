@@ -1,5 +1,7 @@
 # Healthcare Claims Document Processing Workflow
 
+[![API Docs](https://img.shields.io/badge/API%20Docs-Swagger%20UI-85EA2D?logo=swagger)](https://chief-builder.github.io/healthcare_claims_document_processing_workflow/)
+
 An intelligent document processing (IDP) system for healthcare claims using AI-powered extraction, validation, and adjudication. Built with TypeScript and Claude AI.
 
 ## Table of Contents
@@ -701,11 +703,22 @@ A complete OpenAPI 3.0 specification is available at [`openapi.yaml`](./openapi.
 - Error response formats
 - Example requests and responses
 
-### Using the Specification
+### Interactive API Documentation
 
-**View in Swagger UI:**
+**View online (recommended):**
+
+👉 **[https://chief-builder.github.io/healthcare_claims_document_processing_workflow/](https://chief-builder.github.io/healthcare_claims_document_processing_workflow/)**
+
+The hosted Swagger UI provides:
+- Interactive API explorer with "Try it out" functionality
+- Request/response examples
+- Schema documentation
+- Authentication testing
+
+### Using the Specification Locally
+
+**View in Swagger UI (Docker):**
 ```bash
-# Using Docker
 docker run -p 8080:8080 -e SWAGGER_JSON=/spec/openapi.yaml -v $(pwd):/spec swaggerapi/swagger-ui
 
 # Open http://localhost:8080
