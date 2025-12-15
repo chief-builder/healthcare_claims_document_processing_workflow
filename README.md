@@ -1,6 +1,8 @@
 # Healthcare Claims Document Processing Workflow
 
 [![API Docs](https://img.shields.io/badge/API%20Docs-Swagger%20UI-85EA2D?logo=swagger)](https://chief-builder.github.io/healthcare_claims_document_processing_workflow/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript)](https://www.typescriptlang.org/)
+[![Claude AI](https://img.shields.io/badge/Claude%20AI-Powered-orange)](https://www.anthropic.com/)
 
 An intelligent document processing (IDP) system for healthcare claims using AI-powered extraction, validation, and adjudication. Built with TypeScript and Claude AI.
 
@@ -8,14 +10,16 @@ An intelligent document processing (IDP) system for healthcare claims using AI-p
 
 - [Overview](#overview)
 - [Architecture](#architecture)
+- [Processing Pipeline](#processing-pipeline)
 - [Features](#features)
 - [Quick Start](#quick-start)
 - [Project Structure](#project-structure)
 - [Data Models](#data-models)
 - [Services](#services)
 - [Agents](#agents)
-- [Testing](#testing)
 - [API Reference](#api-reference)
+- [Real-time Updates](#real-time-updates)
+- [Testing](#testing)
 - [Configuration](#configuration)
 - [OpenAPI Specification](#openapi-specification)
 
@@ -23,64 +27,157 @@ An intelligent document processing (IDP) system for healthcare claims using AI-p
 
 ## Overview
 
-This system processes healthcare claims documents (CMS-1500, UB-04, EOB) through an automated pipeline:
-
-```
-Document Upload → OCR/Vision → Extraction → Enrichment → Validation → Quality Assessment → Adjudication → RAG Indexing
-```
+This system automates the end-to-end processing of healthcare claims documents (CMS-1500, UB-04, EOB) through an intelligent pipeline that combines OCR, Vision AI, and Large Language Models.
 
 ### Key Capabilities
 
-- **Multi-format Support**: CMS-1500 (Professional), UB-04 (Institutional), EOB (Explanation of Benefits)
-- **AI-Powered Extraction**: Uses Claude AI for intelligent field extraction and validation
-- **Vision Processing**: Direct image analysis for complex layouts and handwritten text
-- **RAG (Retrieval-Augmented Generation)**: Query indexed claims using natural language
-- **Quality Scoring**: Automated quality assessment with confidence tracking
-- **Automated Adjudication**: Coverage determination and payment calculation
+| Capability | Description |
+|------------|-------------|
+| **Multi-format Support** | CMS-1500 (Professional), UB-04 (Institutional), EOB (Explanation of Benefits) |
+| **AI-Powered Extraction** | Claude AI extracts structured data from unstructured documents |
+| **Vision Processing** | Direct image analysis for complex layouts and handwritten text |
+| **Code Validation** | NPI, ICD-10, CPT, and HCPCS code validation against reference databases |
+| **Quality Scoring** | LLM-graded extraction quality with per-field confidence scores |
+| **Automated Adjudication** | Coverage determination, fee schedule lookup, and payment calculation |
+| **RAG Queries** | Natural language queries against indexed claims |
+| **Real-time Updates** | WebSocket notifications for processing status changes |
 
 ---
 
 ## Architecture
 
+### System Overview
+
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           HEALTHCARE CLAIMS IDP SYSTEM                       │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌───────────┐ │
-│  │   Document   │───▶│   Intake     │───▶│   Parsing    │───▶│ Extraction│ │
-│  │   Upload     │    │   Agent      │    │   Agent      │    │   Agent   │ │
-│  └──────────────┘    └──────────────┘    └──────────────┘    └─────┬─────┘ │
-│                                                                     │       │
-│  ┌──────────────────────────────────────────────────────────────────┘       │
-│  │                                                                          │
-│  ▼                                                                          │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌───────────┐ │
-│  │  Enrichment  │───▶│  Validation  │───▶│   Quality    │───▶│Adjudication│ │
-│  │   Service    │    │   Agent      │    │   Service    │    │   Agent   │ │
-│  └──────────────┘    └──────────────┘    └──────────────┘    └─────┬─────┘ │
-│                                                                     │       │
-│  ┌──────────────────────────────────────────────────────────────────┘       │
-│  │                                                                          │
-│  ▼                                                                          │
-│  ┌──────────────┐    ┌──────────────┐                                       │
-│  │     RAG      │◀──▶│   Vector     │                                       │
-│  │   Service    │    │   Store      │                                       │
-│  └──────────────┘    └──────────────┘                                       │
-│                                                                              │
-├──────────────────────────────────────────────────────────────────────────────┤
-│                            SUPPORTING SERVICES                               │
-├──────────────────────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
-│  │    OCR      │  │   Vision    │  │  Embeddings │  │   Storage   │         │
-│  │   Service   │  │   Service   │  │   Service   │  │   Service   │         │
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘         │
-│                                                                              │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
-│  │   Claude    │  │   Quality   │  │   Feedback  │  │    Queue    │         │
-│  │   Agent     │  │   Service   │  │   Service   │  │   Service   │         │
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘         │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                        HEALTHCARE CLAIMS IDP SYSTEM                             │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                 │
+│   ┌─────────────┐      ┌──────────────────────────────────────────────────┐    │
+│   │   Client    │      │              REST API (Express)                  │    │
+│   │  (Browser)  │◄────►│  /api/claims  /api/review-queue  /api/query     │    │
+│   └──────┬──────┘      └──────────────────────┬───────────────────────────┘    │
+│          │                                    │                                 │
+│          │ WebSocket                          │                                 │
+│          │ (Socket.IO)                        ▼                                 │
+│          │                    ┌───────────────────────────────┐                 │
+│          └───────────────────►│    Workflow Orchestrator      │                 │
+│                               │    (Event-Driven Pipeline)    │                 │
+│                               └───────────────┬───────────────┘                 │
+│                                               │                                 │
+│  ┌────────────────────────────────────────────┼────────────────────────────┐   │
+│  │                         PROCESSING PIPELINE                              │   │
+│  │                                                                          │   │
+│  │   ┌─────────┐    ┌─────────┐    ┌───────────┐    ┌──────────────┐       │   │
+│  │   │ Intake  │───►│ Parsing │───►│ Extraction│───►│  Validation  │       │   │
+│  │   │ Agent   │    │  Agent  │    │   Agent   │    │    Agent     │       │   │
+│  │   └─────────┘    └─────────┘    └───────────┘    └──────┬───────┘       │   │
+│  │                                                         │                │   │
+│  │                                    ┌────────────────────┼────────────┐   │   │
+│  │                                    │                    │            │   │   │
+│  │                                    ▼                    ▼            ▼   │   │
+│  │                            ┌─────────────┐    ┌─────────────┐  ┌──────┐ │   │
+│  │                            │ Correction  │    │ Adjudication│  │Review│ │   │
+│  │                            │   Agent     │    │    Agent    │  │Queue │ │   │
+│  │                            └─────────────┘    └──────┬──────┘  └──────┘ │   │
+│  │                                                      │                   │   │
+│  └──────────────────────────────────────────────────────┼───────────────────┘   │
+│                                                         │                       │
+│  ┌──────────────────────────────────────────────────────┼───────────────────┐   │
+│  │                          SERVICES LAYER              │                   │   │
+│  │                                                      ▼                   │   │
+│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────────────┐  ┌────────┐ │   │
+│  │  │   LLM   │  │   OCR   │  │ Vision  │  │   RAG Service   │  │Storage │ │   │
+│  │  │ Service │  │ Service │  │ Service │  │ (Vector Search) │  │Service │ │   │
+│  │  └─────────┘  └─────────┘  └─────────┘  └─────────────────┘  └────────┘ │   │
+│  │                                                                          │   │
+│  │  ┌─────────┐  ┌─────────┐  ┌──────────┐  ┌─────────┐  ┌───────────────┐ │   │
+│  │  │ Quality │  │Enrichmt │  │Embeddings│  │ Queue   │  │  Feedback     │ │   │
+│  │  │ Service │  │ Service │  │ Service  │  │ Service │  │  Service      │ │   │
+│  │  └─────────┘  └─────────┘  └──────────┘  └─────────┘  └───────────────┘ │   │
+│  └──────────────────────────────────────────────────────────────────────────┘   │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Technology Stack
+
+| Layer | Technologies |
+|-------|--------------|
+| **API** | Express.js, Socket.IO, Multer |
+| **AI/ML** | Claude AI (Anthropic), Tesseract.js |
+| **Data** | In-memory Vector Store, JSON Storage |
+| **Validation** | Zod Schemas, Custom Validators |
+| **Language** | TypeScript 5.0, Node.js 20+ |
+
+---
+
+## Processing Pipeline
+
+### Claim Flow Diagram
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                           CLAIM PROCESSING FLOW                               │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+    Document
+    Upload
+       │
+       ▼
+  ┌─────────┐     ┌─────────┐     ┌───────────┐     ┌────────────┐
+  │RECEIVED │────►│ PARSING │────►│EXTRACTING │────►│ VALIDATING │
+  └─────────┘     └─────────┘     └───────────┘     └─────┬──────┘
+                                                          │
+                       ┌──────────────────────────────────┼───────────────────┐
+                       │                                  │                   │
+                       │         Confidence Check         │                   │
+                       │                                  │                   │
+                       ▼                                  ▼                   ▼
+                 ┌──────────┐                    ┌─────────────┐      ┌────────────┐
+                 │CORRECTING│                    │ADJUDICATING │      │PENDING     │
+                 │          │                    │             │      │REVIEW      │
+                 └────┬─────┘                    └──────┬──────┘      └────────────┘
+                      │                                 │                    │
+                      │ Retry                           │                    │ Human
+                      │ (max 3)                         │                    │ Decision
+                      ▼                                 ▼                    │
+               ┌───────────┐                     ┌───────────┐              │
+               │  FAILED   │                     │ COMPLETED │◄─────────────┘
+               └───────────┘                     └───────────┘
+                                                       │
+                                                       ▼
+                                                 ┌───────────┐
+                                                 │RAG INDEX  │
+                                                 │(Searchable)│
+                                                 └───────────┘
+```
+
+### Status Transitions
+
+| From Status | To Status | Trigger |
+|-------------|-----------|---------|
+| `received` | `parsing` | Document intake completed |
+| `parsing` | `extracting` | OCR/Vision processing done |
+| `extracting` | `validating` | Fields extracted (confidence ≥ 0.5) |
+| `extracting` | `pending_review` | Low confidence (< 0.5) |
+| `validating` | `adjudicating` | Validation passed (confidence ≥ 0.85) |
+| `validating` | `correcting` | Validation issues (0.60 - 0.85) |
+| `validating` | `pending_review` | Low confidence (< 0.60) |
+| `correcting` | `validating` | Correction attempted |
+| `correcting` | `failed` | Max attempts exceeded |
+| `adjudicating` | `completed` | Payment calculated |
+| `pending_review` | `completed` | Human approved |
+| `pending_review` | `failed` | Human rejected |
+
+### Confidence Thresholds
+
+```
+ 0%                    60%                   85%                  100%
+  │                     │                     │                     │
+  │   HUMAN REVIEW      │    CORRECTION       │   AUTO-PROCESS      │
+  │   (Escalation)      │    (Retry Loop)     │   (Full Automation) │
+  │◄───────────────────►│◄───────────────────►│◄───────────────────►│
 ```
 
 ---
@@ -89,52 +186,43 @@ Document Upload → OCR/Vision → Extraction → Enrichment → Validation → 
 
 ### Document Processing
 
-| Feature | Description |
-|---------|-------------|
-| **OCR** | Text extraction using Tesseract.js with preprocessing |
-| **Vision AI** | Direct image analysis for layout, tables, handwriting |
-| **Multi-page Support** | Process multi-page documents |
-| **Format Detection** | Automatic document type classification |
+| Feature | Description | Service |
+|---------|-------------|---------|
+| **OCR** | Text extraction using Tesseract.js with preprocessing | `OCRService` |
+| **Vision AI** | Direct image analysis for layout, tables, handwriting | `VisionService` |
+| **Document Classification** | Automatic CMS-1500/UB-04/EOB detection | `LLMService` |
+| **Multi-page Support** | Process multi-page document images | `ParsingAgent` |
 
 ### Data Extraction
 
-| Feature | Description |
-|---------|-------------|
-| **Patient Info** | Member ID, name, DOB, gender, address |
-| **Provider Info** | NPI, name, tax ID, specialty, address |
-| **Diagnoses** | ICD-10 codes with descriptions |
-| **Service Lines** | Procedure codes, dates, charges, modifiers |
-| **Totals** | Charges, payments, patient responsibility |
+| Field Category | Extracted Fields |
+|----------------|------------------|
+| **Patient** | Member ID, Name, DOB, Gender, Address |
+| **Provider** | NPI, Name, Tax ID, Specialty, Address |
+| **Diagnoses** | ICD-10 codes with descriptions, Primary indicator |
+| **Service Lines** | CPT/HCPCS codes, Dates, Charges, Modifiers, Units |
+| **Totals** | Total Charges, Amount Paid, Patient Responsibility |
 
 ### Validation
 
-| Feature | Description |
-|---------|-------------|
-| **NPI Validation** | Luhn algorithm checksum verification |
-| **ICD-10 Codes** | Reference database lookup (34 common codes) |
-| **CPT Codes** | Reference database lookup (46 common codes) |
-| **HCPCS Codes** | Reference database lookup (35 common codes) |
-| **Date Validation** | Format and logical checks |
-| **Business Rules** | Required fields, cross-field validation |
-
-### Quality Assessment
-
-| Feature | Description |
-|---------|-------------|
-| **LLM Grading** | Claude AI evaluates extraction quality |
-| **Confidence Tracking** | Per-field confidence scores |
-| **Review Flagging** | Automatic escalation for low confidence |
-| **Grade Scale** | A (>90%), B (80-90%), C (70-80%), D (60-70%), F (<60%) |
+| Validation Type | Method | Reference Data |
+|-----------------|--------|----------------|
+| **NPI** | Luhn algorithm checksum | Algorithm-based |
+| **ICD-10** | Database lookup | 34 common codes |
+| **CPT** | Database lookup | 46 common codes |
+| **HCPCS** | Database lookup | 35 common codes |
+| **Dates** | Format + logical checks | Business rules |
+| **Required Fields** | Completeness check | Schema-based |
 
 ### Adjudication
 
-| Feature | Description |
-|---------|-------------|
-| **Eligibility Check** | Member coverage verification |
-| **Coverage Check** | Procedure code coverage lookup |
-| **Fee Schedule** | Allowed amount calculation |
-| **Benefits Application** | Deductible, copay, coinsurance |
-| **Payment Calculation** | Plan paid vs patient responsibility |
+| Step | Description |
+|------|-------------|
+| **Eligibility** | Verify member coverage status |
+| **Coverage** | Check procedure code coverage |
+| **Fee Schedule** | Look up allowed amounts |
+| **Benefits** | Apply deductible, copay, coinsurance |
+| **Payment** | Calculate plan paid vs patient responsibility |
 
 ---
 
@@ -144,22 +232,23 @@ Document Upload → OCR/Vision → Extraction → Enrichment → Validation → 
 
 - Node.js 20+
 - npm 9+
+- Anthropic API Key (for Claude AI)
 
 ### Installation
 
 ```bash
 # Clone repository
-git clone <repository-url>
+git clone https://github.com/chief-builder/healthcare_claims_document_processing_workflow.git
 cd healthcare_claims_document_processing_workflow
 
 # Install dependencies
 npm install
 
-# Create environment file
+# Configure environment
 cp .env.example .env
-
-# Edit .env with your OAuth token
-# CLAUDE_CODE_OAUTH_TOKEN=your-token-here
+# Edit .env:
+#   ANTHROPIC_API_KEY=your-api-key
+#   CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token (alternative)
 
 # Create data directories
 mkdir -p data/storage data/uploads
@@ -168,27 +257,36 @@ mkdir -p data/storage data/uploads
 npm run build
 ```
 
-### Running Tests
+### Start the API Server
 
 ```bash
-# Core service tests
-npx tsx test-services.ts all
+# Start server on port 3000
+npx tsx test-api.ts
 
-# Agent tests
-npx tsx test-agents.ts all
+# Server endpoints:
+#   REST API: http://localhost:3000/api
+#   WebSocket: ws://localhost:3000
+#   Health:   http://localhost:3000/api/health
+```
 
-# RAG service tests
-npx tsx test-rag.ts
+### Submit Your First Claim
 
-# Vision service tests (requires ANTHROPIC_API_KEY)
-npx tsx test-vision.ts
+```bash
+# Submit a document for processing
+curl -X POST http://localhost:3000/api/claims \
+  -H "Authorization: Bearer dev-api-key" \
+  -F "document=@your-claim.png" \
+  -F "priority=normal"
 
-# End-to-end tests
-npx tsx test-e2e.ts
-npx tsx test-comprehensive-e2e.ts
-
-# Test with sample fixtures
-npx tsx test-with-fixtures.ts
+# Response:
+# {
+#   "success": true,
+#   "data": {
+#     "claimId": "CLM-1234567890-ABCD1234",
+#     "status": "completed",
+#     "processingTimeMs": 35000
+#   }
+# }
 ```
 
 ---
@@ -198,56 +296,79 @@ npx tsx test-with-fixtures.ts
 ```
 healthcare_claims_document_processing_workflow/
 ├── src/
-│   ├── agents/                 # Processing agents
-│   │   ├── base.ts            # Base agent class
-│   │   ├── intake.ts          # Document intake
-│   │   ├── parsing.ts         # Document parsing
-│   │   ├── extraction.ts      # Field extraction
-│   │   ├── validation.ts      # Data validation
-│   │   ├── correction.ts      # Error correction
-│   │   └── adjudication.ts    # Payment adjudication
+│   ├── api/                      # REST API Layer
+│   │   ├── server.ts             # Express server setup
+│   │   ├── websocket.ts          # Socket.IO real-time updates
+│   │   ├── routes/
+│   │   │   ├── claims.ts         # /api/claims endpoints
+│   │   │   ├── review.ts         # /api/review-queue endpoints
+│   │   │   ├── query.ts          # /api/query (RAG) endpoints
+│   │   │   └── health.ts         # Health check endpoints
+│   │   └── middleware/
+│   │       ├── auth.ts           # API key authentication
+│   │       ├── rateLimit.ts      # Rate limiting
+│   │       ├── upload.ts         # File upload (Multer)
+│   │       └── validation.ts     # Request validation
 │   │
-│   ├── services/               # Core services
-│   │   ├── claude-agent.ts    # Claude Agent SDK wrapper
-│   │   ├── ocr.ts             # OCR processing
-│   │   ├── vision.ts          # Vision/multimodal AI
-│   │   ├── embeddings.ts      # Text embeddings
-│   │   ├── vectorstore.ts     # Vector storage
-│   │   ├── rag.ts             # RAG pipeline
-│   │   ├── quality.ts         # Quality assessment
-│   │   ├── enrichment.ts      # Data enrichment
-│   │   ├── storage.ts         # File storage
-│   │   ├── queue.ts           # Job queue
-│   │   └── feedback.ts        # Human feedback
+│   ├── orchestrator/             # Workflow Engine
+│   │   ├── workflow.ts           # Main orchestrator
+│   │   └── state.ts              # State machine & persistence
 │   │
-│   ├── models/                 # Data models (Zod schemas)
-│   │   ├── claim.ts           # Claim data structures
-│   │   ├── validation.ts      # Validation result types
-│   │   └── adjudication.ts    # Adjudication types
+│   ├── agents/                   # Processing Agents
+│   │   ├── base.ts               # Base agent class
+│   │   ├── intake.ts             # Document intake
+│   │   ├── parsing.ts            # OCR/Vision parsing
+│   │   ├── extraction.ts         # Field extraction
+│   │   ├── validation.ts         # Data validation
+│   │   ├── correction.ts         # Error correction
+│   │   └── adjudication.ts       # Payment calculation
 │   │
-│   ├── data/                   # Reference data
-│   │   ├── icd10-codes.json   # ICD-10 diagnosis codes
-│   │   ├── cpt-codes.json     # CPT procedure codes
-│   │   ├── hcpcs-codes.json   # HCPCS codes
-│   │   └── pos-codes.json     # Place of service codes
+│   ├── services/                 # Core Services
+│   │   ├── llm.ts                # Claude AI integration
+│   │   ├── ocr.ts                # Tesseract.js OCR
+│   │   ├── vision.ts             # Vision/multimodal AI
+│   │   ├── rag.ts                # RAG pipeline
+│   │   ├── vectorstore.ts        # Vector storage
+│   │   ├── embeddings.ts         # Text embeddings
+│   │   ├── quality.ts            # Quality assessment
+│   │   ├── enrichment.ts         # Data enrichment
+│   │   ├── storage.ts            # Claim persistence
+│   │   ├── queue.ts              # Job queue
+│   │   └── feedback.ts           # Human feedback
 │   │
-│   ├── utils/                  # Utilities
-│   │   ├── validators.ts      # Code validation
-│   │   ├── npi.ts             # NPI validation
-│   │   ├── hash.ts            # Document hashing
-│   │   └── logger.ts          # Logging
+│   ├── models/                   # Data Models (Zod)
+│   │   ├── claim.ts              # Claim schemas
+│   │   ├── validation.ts         # Validation types
+│   │   └── adjudication.ts       # Adjudication types
 │   │
-│   └── config/                 # Configuration
-│       └── index.ts           # App config
+│   ├── data/                     # Reference Data
+│   │   ├── icd10-codes.json      # ICD-10 codes (34)
+│   │   ├── cpt-codes.json        # CPT codes (46)
+│   │   ├── hcpcs-codes.json      # HCPCS codes (35)
+│   │   └── pos-codes.json        # Place of service
+│   │
+│   ├── utils/                    # Utilities
+│   │   ├── validators.ts         # Code validators
+│   │   ├── npi.ts                # NPI validation
+│   │   ├── hash.ts               # Document hashing
+│   │   └── logger.ts             # Structured logging
+│   │
+│   └── config/                   # Configuration
+│       └── index.ts              # Environment config
 │
-├── test-fixtures/              # Test data
-│   └── sample-claims.ts       # Sample claims
+├── test-fixtures/                # Test Data
+│   └── sample-claims.ts          # Sample claim objects
 │
-├── data/                       # Runtime data
-│   ├── storage/               # Stored claims
-│   └── uploads/               # Uploaded files
+├── test-data/                    # Test Images
+│   └── *.png                     # Sample claim images
 │
-└── test-*.ts                   # Test scripts
+├── docs/                         # GitHub Pages
+│   └── index.html                # Swagger UI
+│
+├── openapi.yaml                  # OpenAPI 3.0 Spec
+├── test-api.ts                   # API server entry
+├── test-manual-api.sh            # API test script
+└── MANUAL_TESTING.md             # Testing guide
 ```
 
 ---
@@ -256,28 +377,24 @@ healthcare_claims_document_processing_workflow/
 
 ### Document Types
 
-```typescript
-type DocumentType = 'cms_1500' | 'ub_04' | 'eob' | 'unknown';
-```
-
-| Type | Description |
-|------|-------------|
-| `cms_1500` | Professional/Physician claims |
-| `ub_04` | Institutional/Hospital claims |
-| `eob` | Explanation of Benefits |
-| `unknown` | Unclassified documents |
+| Type | Form | Description |
+|------|------|-------------|
+| `cms_1500` | CMS-1500 | Professional/Physician claims |
+| `ub_04` | UB-04 | Institutional/Hospital claims |
+| `eob` | EOB | Explanation of Benefits |
+| `unknown` | - | Unclassified documents |
 
 ### Claim Status
 
 ```typescript
 type ClaimStatus =
-  | 'received'       // Initial state
-  | 'parsing'        // Document being parsed
-  | 'extracting'     // Fields being extracted
-  | 'validating'     // Data being validated
-  | 'correcting'     // Errors being corrected
+  | 'received'       // Document uploaded
+  | 'parsing'        // OCR/Vision in progress
+  | 'extracting'     // LLM extracting fields
+  | 'validating'     // Validating extracted data
+  | 'correcting'     // Attempting error correction
   | 'pending_review' // Human review required
-  | 'adjudicating'   // Payment being calculated
+  | 'adjudicating'   // Calculating payment
   | 'completed'      // Processing complete
   | 'failed';        // Processing failed
 ```
@@ -288,43 +405,49 @@ type ClaimStatus =
 interface ExtractedClaim {
   id: string;
   documentType: DocumentType;
+
   patient: {
     memberId: string;
     firstName: string;
     lastName: string;
-    dateOfBirth: string;
+    dateOfBirth: string;      // YYYY-MM-DD
     gender?: 'M' | 'F' | 'U';
     address?: Address;
   };
+
   provider: {
-    npi: string;
+    npi: string;              // 10-digit NPI
     name: string;
     taxId?: string;
     specialty?: string;
     address?: Address;
   };
+
   diagnoses: Array<{
-    code: string;
+    code: string;             // ICD-10 code
     description?: string;
     isPrimary: boolean;
   }>;
+
   serviceLines: Array<{
     lineNumber: number;
-    dateOfService: string;
-    procedureCode: string;
+    dateOfService: string;    // YYYY-MM-DD
+    procedureCode: string;    // CPT/HCPCS
     modifiers: string[];
     diagnosisPointers: string[];
     units: number;
     chargeAmount: number;
     placeOfService?: string;
   }>;
+
   totals: {
     totalCharges: number;
     amountPaid?: number;
     patientResponsibility?: number;
   };
-  confidenceScores: Record<string, number>;
-  provenance: Record<string, Provenance>;
+
+  confidenceScores: Record<string, number>;  // Per-field confidence
+  provenance: Record<string, Provenance>;    // Data source tracking
 }
 ```
 
@@ -332,79 +455,67 @@ interface ExtractedClaim {
 
 ## Services
 
-### Claude Agent Service
+### LLM Service
 
-Wrapper for Claude Agent SDK with OAuth token authentication.
-
-```typescript
-import { getClaudeAgentService } from './src/services/claude-agent.js';
-
-const claude = getClaudeAgentService();
-
-// Simple prompt
-const response = await claude.prompt('Analyze this claim...');
-
-// JSON response
-const data = await claude.promptForJSON<MyType>('Extract fields...');
-```
-
-### OCR Service
-
-Text extraction from document images.
+The core AI service for document understanding and field extraction.
 
 ```typescript
-import { getOCRService } from './src/services/ocr.js';
+import { getLLMService } from './src/services/llm.js';
 
-const ocr = getOCRService();
-const result = await ocr.extractText(imageBuffer);
-// Returns: { text, confidence, words, lines }
-```
+const llm = getLLMService();
 
-### Vision Service
+// Classify document type
+const { type, confidence } = await llm.classifyDocument(ocrText);
 
-Multimodal AI for document analysis. Requires `ANTHROPIC_API_KEY`.
+// Extract all fields
+const claim = await llm.extractClaim({
+  ocrText,
+  documentType: 'cms_1500',
+  pageCount: 1
+});
 
-```typescript
-import { getVisionService } from './src/services/vision.js';
+// Infer specific field
+const field = await llm.inferField('provider.npi', ocrText, existingClaim);
 
-const vision = getVisionService();
-
-// Layout analysis
-const layout = await vision.analyzeLayout(imageBuffer);
-
-// Form field extraction
-const fields = await vision.extractFormFields(imageBuffer);
-
-// Full claim extraction
-const result = await vision.extractFromImage(imageBuffer);
+// Correct invalid field
+const corrected = await llm.correctField({
+  fieldPath: 'provider.npi',
+  currentValue: '123456789',
+  error: 'NPI checksum is invalid',
+  ocrText
+});
 ```
 
 ### RAG Service
 
-Retrieval-Augmented Generation for claim querying.
+Query indexed claims using natural language.
 
 ```typescript
 import { getRAGService } from './src/services/rag.js';
 
 const rag = getRAGService();
 
-// Index a claim
+// Index a processed claim
 await rag.indexClaim(extractedClaim);
 
-// Query claims
+// Natural language query
 const response = await rag.query({
-  question: 'Which patients have diabetes?',
+  question: 'Which patients have diabetes diagnoses?',
   maxChunks: 5,
   minRelevance: 0.5
 });
 
 // Find similar claims
 const similar = await rag.findSimilarClaims(claimId, 5);
+
+// Get statistics
+const stats = await rag.getStats();
+// { totalChunks: 150, totalClaims: 25, avgChunksPerClaim: 6 }
 ```
 
 ### Quality Service
 
-LLM-based quality assessment.
+LLM-graded quality assessment.
 
 ```typescript
 import { getQualityService } from './src/services/quality.js';
@@ -414,97 +525,166 @@ const quality = getQualityService();
 const evaluation = await quality.evaluateExtraction({
   extractedClaim: claim,
   ocrText: rawText,
-  validationResult: validationResult
+  validationResult
 });
 
 // Returns:
 // {
 //   overallScore: 0.91,
-//   grade: 'A',
+//   grade: 'A',                    // A, B, C, D, F
 //   requiresReview: false,
-//   dimensions: { completeness, accuracy, consistency, formatting },
+//   dimensions: {
+//     completeness: 0.95,
+//     accuracy: 0.88,
+//     consistency: 0.92,
+//     formatting: 0.90
+//   },
 //   lowConfidenceFields: []
 // }
-```
-
-### Enrichment Service
-
-Data normalization and enrichment.
-
-```typescript
-import { getEnrichmentService } from './src/services/enrichment.js';
-
-const enrichment = getEnrichmentService();
-
-const result = await enrichment.enrichClaim(extractedClaim);
-// Returns: { enrichedClaim, normalizations, enrichments, overallConfidence }
-```
-
-### Embeddings Service
-
-Text embeddings for semantic search.
-
-```typescript
-import { getEmbeddingsService } from './src/services/embeddings.js';
-
-const embeddings = getEmbeddingsService();
-
-// Generate embedding
-const embedding = await embeddings.embed(text);
-
-// Chunk and embed
-const chunks = await embeddings.chunkAndEmbed(text, {
-  strategy: 'semantic', // 'fixed', 'sentence', 'paragraph', 'semantic'
-  maxChunkSize: 500,
-  overlap: 50
-});
 ```
 
 ---
 
 ## Agents
 
-### Base Agent
+### Agent Architecture
 
-All agents extend `BaseAgent<TInput, TOutput>` with:
+All agents extend `BaseAgent<TInput, TOutput>` providing:
 
-- Automatic logging (start, complete, error)
-- Retry with exponential backoff
-- Confidence-based routing
-- Status transitions
+- **Automatic Logging**: Start, complete, error events
+- **Retry Logic**: Exponential backoff with configurable attempts
+- **Confidence Routing**: Route based on confidence scores
+- **Status Transitions**: Atomic state updates
 
-### Agent Types
+### Agent Pipeline
 
-| Agent | Purpose | Input | Output |
-|-------|---------|-------|--------|
-| `IntakeAgent` | Document upload/storage | File buffer | Claim record |
-| `ParsingAgent` | Document parsing | Claim record | Parsed data |
-| `ExtractionAgent` | Field extraction | Parsed data | Extracted claim |
-| `ValidationAgent` | Data validation | Extracted claim | Validation result |
-| `CorrectionAgent` | Error correction | Validation errors | Corrected claim |
-| `AdjudicationAgent` | Payment calculation | Validated claim | Decision |
+| Agent | Input | Output | Description |
+|-------|-------|--------|-------------|
+| `IntakeAgent` | File buffer | Claim record | Store document, generate ID |
+| `ParsingAgent` | Claim record | OCR text | Extract text via OCR/Vision |
+| `ExtractionAgent` | OCR text | Extracted claim | LLM field extraction |
+| `ValidationAgent` | Extracted claim | Validation result | Validate all fields |
+| `CorrectionAgent` | Validation errors | Corrected claim | LLM error correction |
+| `AdjudicationAgent` | Validated claim | Payment decision | Calculate payment |
 
 ### Usage Example
 
 ```typescript
-import { ValidationAgent } from './src/agents/validation.js';
-import { AdjudicationAgent } from './src/agents/adjudication.js';
+import { WorkflowOrchestrator } from './src/orchestrator/index.js';
 
-const validator = new ValidationAgent();
-const adjudicator = new AdjudicationAgent();
+const orchestrator = new WorkflowOrchestrator({
+  autoProcessThreshold: 0.85,
+  correctionThreshold: 0.60,
+  maxCorrectionAttempts: 3,
+  enableRAGIndexing: true
+});
 
-// Validate
-const validation = await validator.execute(
-  { extractedClaim },
-  claimRecord
-);
+// Listen for events
+orchestrator.on('workflow:stage_completed', ({ claimId, stage }) => {
+  console.log(`Claim ${claimId} completed ${stage}`);
+});
 
-// Adjudicate
-const adjudication = await adjudicator.execute(
-  { extractedClaim },
-  { ...claimRecord, status: 'adjudicating' }
-);
+orchestrator.on('workflow:review_required', ({ claimId, reason }) => {
+  console.log(`Claim ${claimId} needs review: ${reason}`);
+});
+
+// Process document
+const result = await orchestrator.processDocument({
+  buffer: documentBuffer,
+  filename: 'claim.png',
+  mimeType: 'image/png',
+  priority: 'normal'
+});
+
+console.log(result.finalStatus);  // 'completed' or 'pending_review'
 ```
+
+---
+
+## API Reference
+
+Full OpenAPI 3.0 specification: [`openapi.yaml`](./openapi.yaml)
+
+Interactive documentation: [Swagger UI](https://chief-builder.github.io/healthcare_claims_document_processing_workflow/)
+
+### Authentication
+
+```bash
+# Bearer token (recommended)
+curl -H "Authorization: Bearer dev-api-key" http://localhost:3000/api/claims
+
+# X-API-Key header
+curl -H "X-API-Key: dev-api-key" http://localhost:3000/api/claims
+```
+
+### Endpoints Summary
+
+| Category | Endpoint | Method | Description |
+|----------|----------|--------|-------------|
+| **Health** | `/api/health` | GET | Basic health check |
+| | `/api/health/detailed` | GET | Component status |
+| **Claims** | `/api/claims` | POST | Submit document |
+| | `/api/claims` | GET | List claims |
+| | `/api/claims/:id` | GET | Get claim details |
+| | `/api/claims/:id/extraction` | GET | Get extracted data |
+| | `/api/claims/:id/validation` | GET | Get validation results |
+| | `/api/claims/:id/adjudication` | GET | Get payment decision |
+| **Review** | `/api/review-queue` | GET | List pending reviews |
+| | `/api/review-queue/:id/review` | POST | Submit decision |
+| **Query** | `/api/query` | POST | Natural language query |
+| | `/api/query/claims/:id/similar` | GET | Find similar claims |
+
+### Rate Limits
+
+| Tier | Limit | Endpoints |
+|------|-------|-----------|
+| **Strict** | 20/15min | Document upload |
+| **Query** | 30/15min | RAG queries |
+| **Default** | 100/15min | Most endpoints |
+| **Lenient** | 500/15min | Read operations |
+
+---
+
+## Real-time Updates
+
+### WebSocket Events
+
+Connect via Socket.IO for real-time claim processing updates.
+
+```javascript
+import { io } from 'socket.io-client';
+
+const socket = io('http://localhost:3000');
+
+// Subscribe to a specific claim
+socket.emit('subscribe:claim', 'CLM-1234567890-ABCD1234');
+
+// Listen for status updates
+socket.on('claim:status_changed', ({ claimId, status, previousStatus }) => {
+  console.log(`${claimId}: ${previousStatus} → ${status}`);
+});
+
+// Listen for processing completion
+socket.on('claim:completed', ({ claimId, result }) => {
+  console.log(`${claimId} completed:`, result);
+});
+
+// Listen for errors
+socket.on('claim:error', ({ claimId, error }) => {
+  console.error(`${claimId} failed:`, error);
+});
+```
+
+### Available Events
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `claim:status_changed` | `{ claimId, status, previousStatus, timestamp }` | Status transition |
+| `claim:stage_started` | `{ claimId, stage, timestamp }` | Processing stage started |
+| `claim:stage_completed` | `{ claimId, stage, result, timestamp }` | Processing stage done |
+| `claim:completed` | `{ claimId, result, timestamp }` | Full processing complete |
+| `claim:error` | `{ claimId, error, timestamp }` | Processing error |
+| `claim:review_required` | `{ claimId, reason, timestamp }` | Human review needed |
 
 ---
 
@@ -512,253 +692,93 @@ const adjudication = await adjudicator.execute(
 
 ### Test Scripts
 
-| Script | Description | Command |
-|--------|-------------|---------|
-| `test-services.ts` | Core service tests | `npx tsx test-services.ts all` |
-| `test-agents.ts` | Agent tests | `npx tsx test-agents.ts all` |
-| `test-rag.ts` | RAG service tests | `npx tsx test-rag.ts` |
-| `test-vision.ts` | Vision service tests | `npx tsx test-vision.ts` |
-| `test-e2e.ts` | Simple E2E test | `npx tsx test-e2e.ts` |
-| `test-comprehensive-e2e.ts` | Full E2E with image | `npx tsx test-comprehensive-e2e.ts` |
-| `test-with-fixtures.ts` | Test with sample data | `npx tsx test-with-fixtures.ts` |
+| Script | Command | Description |
+|--------|---------|-------------|
+| `test-services.ts` | `npx tsx test-services.ts all` | Core service tests |
+| `test-agents.ts` | `npx tsx test-agents.ts all` | Agent tests |
+| `test-rag.ts` | `npx tsx test-rag.ts` | RAG service tests |
+| `test-e2e.ts` | `npx tsx test-e2e.ts` | End-to-end pipeline |
+| `test-manual-api.sh` | `./test-manual-api.sh` | Full API test suite |
+
+### Running API Tests
+
+```bash
+# Start the server in one terminal
+npx tsx test-api.ts
+
+# Run the test script in another terminal
+./test-manual-api.sh
+
+# Tests:
+#  ✓ Health checks
+#  ✓ Authentication
+#  ✓ Document upload (5 claims)
+#  ✓ Claim filtering
+#  ✓ Extraction/Validation/Adjudication
+#  ✓ Review queue workflow
+#  ✓ RAG queries
+#  ✓ Error handling
+```
 
 ### Test Fixtures
 
-Sample claims are provided in `test-fixtures/sample-claims.ts`:
+Sample claims in `test-fixtures/sample-claims.ts`:
 
-- **CMS-1500 Claims**: Diabetes, Cardiology, Orthopedic
-- **UB-04 Claims**: ER Visit, Surgery
-- **EOB Claims**: Processed office visit
+- **CMS-1500**: Diabetes routine, Cardiology, Orthopedic
+- **UB-04**: ER Visit, Surgery
+- **EOB**: Processed claims
 - **Edge Cases**: Missing fields, invalid codes, low confidence
-
-### Adding Test Images
-
-Place a CMS-1500 claim image at `test-claim.png` for vision tests.
-
----
-
-## API Reference
-
-The system provides a RESTful API with WebSocket support. Full OpenAPI 3.0 specification available in [`openapi.yaml`](./openapi.yaml).
-
-### Starting the Server
-
-```bash
-# Start the API server
-npx tsx test-api.ts
-
-# Server runs on http://localhost:3000
-```
-
-### Authentication
-
-All endpoints except health checks require API key authentication:
-
-```bash
-# Using Bearer token (recommended)
-curl -H "Authorization: Bearer dev-api-key" http://localhost:3000/api/claims
-
-# Using X-API-Key header
-curl -H "X-API-Key: dev-api-key" http://localhost:3000/api/claims
-```
-
-| Environment | API Key | Configuration |
-|-------------|---------|---------------|
-| Development | `dev-api-key` | Default |
-| Production | Custom | Set `API_KEYS` env var |
-
-### API Endpoints
-
-#### Health Endpoints
-
-| Method | Endpoint | Description | Auth |
-|--------|----------|-------------|------|
-| GET | `/api/health` | Basic health check | No |
-| GET | `/api/health/detailed` | Detailed health with components | No |
-| GET | `/api/health/ready` | Kubernetes readiness probe | No |
-| GET | `/api/health/live` | Kubernetes liveness probe | No |
-
-#### Claims Endpoints
-
-| Method | Endpoint | Description | Auth |
-|--------|----------|-------------|------|
-| POST | `/api/claims` | Submit document for processing | Yes |
-| GET | `/api/claims` | List claims with filtering | Yes |
-| GET | `/api/claims/:id` | Get claim details | Yes |
-| GET | `/api/claims/:id/extraction` | Get extraction results | Yes |
-| GET | `/api/claims/:id/validation` | Get validation results | Yes |
-| GET | `/api/claims/:id/adjudication` | Get adjudication decision | Yes |
-| GET | `/api/claims/:id/history` | Get processing history | Yes |
-| DELETE | `/api/claims/:id` | Delete a claim | Yes |
-
-#### Review Queue Endpoints
-
-| Method | Endpoint | Description | Auth |
-|--------|----------|-------------|------|
-| GET | `/api/review-queue` | Get claims pending review | Yes |
-| GET | `/api/review-queue/:id` | Get review details | Yes |
-| POST | `/api/review-queue/:id/review` | Submit review decision | Yes |
-| GET | `/api/review-queue/stats/summary` | Get review statistics | Yes |
-
-#### Query (RAG) Endpoints
-
-| Method | Endpoint | Description | Auth |
-|--------|----------|-------------|------|
-| POST | `/api/query` | Natural language query | Yes |
-| GET | `/api/query/claims/:id/similar` | Find similar claims | Yes |
-| POST | `/api/query/claims/:id/index` | Index claim for RAG | Yes |
-| GET | `/api/query/stats` | Get RAG statistics | Yes |
-
-### Rate Limits
-
-| Type | Limit | Applies To |
-|------|-------|------------|
-| **Strict** | 20 req/15 min | Document upload |
-| **Query** | 30 req/15 min | LLM operations |
-| **Default** | 100 req/15 min | Standard endpoints |
-| **Lenient** | 500 req/15 min | Read operations |
-
-### Quick Examples
-
-**Submit a claim:**
-```bash
-curl -X POST http://localhost:3000/api/claims \
-  -H "Authorization: Bearer dev-api-key" \
-  -F "document=@test-data/claim-diabetes-routine.png" \
-  -F "priority=normal"
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "claimId": "CLM-1765756746449-9B658184",
-    "status": "completed",
-    "processingTimeMs": 39510
-  },
-  "message": "Document submitted for processing"
-}
-```
-
-**Get validation results:**
-```bash
-curl -H "Authorization: Bearer dev-api-key" \
-  "http://localhost:3000/api/claims/CLM-xxx/validation"
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "isValid": false,
-    "errors": [
-      {"field": "provider.npi", "message": "NPI checksum is invalid", "isCorrectable": true}
-    ],
-    "warnings": [
-      {"field": "serviceLines.0.chargeAmount", "message": "Charge amount appears low for CPT 99213"}
-    ],
-    "overallConfidence": 0.785
-  }
-}
-```
-
-**Submit review decision:**
-```bash
-curl -X POST "http://localhost:3000/api/review-queue/CLM-xxx/review" \
-  -H "Authorization: Bearer dev-api-key" \
-  -H "Content-Type: application/json" \
-  -d '{"action": "approve"}'
-```
-
-**Natural language query:**
-```bash
-curl -X POST "http://localhost:3000/api/query" \
-  -H "Authorization: Bearer dev-api-key" \
-  -H "Content-Type: application/json" \
-  -d '{"question": "What diabetes-related claims have been processed?", "maxChunks": 5}'
-```
-
-### Manual Testing
-
-A comprehensive test script is provided:
-
-```bash
-# Run all API tests
-./test-manual-api.sh
-```
-
-See [`MANUAL_TESTING.md`](./MANUAL_TESTING.md) Section 8 for detailed testing instructions.
-
----
-
-## OpenAPI Specification
-
-A complete OpenAPI 3.0 specification is available at [`openapi.yaml`](./openapi.yaml). This specification includes:
-
-- All API endpoints with request/response schemas
-- Authentication methods (Bearer token, API key)
-- Rate limiting documentation
-- Error response formats
-- Example requests and responses
-
-### Interactive API Documentation
-
-**View online (recommended):**
-
-👉 **[https://chief-builder.github.io/healthcare_claims_document_processing_workflow/](https://chief-builder.github.io/healthcare_claims_document_processing_workflow/)**
-
-The hosted Swagger UI provides:
-- Interactive API explorer with "Try it out" functionality
-- Request/response examples
-- Schema documentation
-- Authentication testing
-
-### Using the Specification Locally
-
-**View in Swagger UI (Docker):**
-```bash
-docker run -p 8080:8080 -e SWAGGER_JSON=/spec/openapi.yaml -v $(pwd):/spec swaggerapi/swagger-ui
-
-# Open http://localhost:8080
-```
-
-**Generate Client SDKs:**
-```bash
-# Using OpenAPI Generator
-npx @openapitools/openapi-generator-cli generate \
-  -i openapi.yaml \
-  -g typescript-fetch \
-  -o ./generated-client
-```
-
-**Import into Postman:**
-1. Open Postman
-2. Click Import → File
-3. Select `openapi.yaml`
-4. All endpoints will be imported with examples
 
 ---
 
 ## Configuration
 
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ANTHROPIC_API_KEY` | Anthropic API key for Claude | Required |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Alternative OAuth token | - |
+| `PORT` | API server port | `3000` |
+| `LOG_LEVEL` | Logging level | `info` |
+| `API_KEYS` | Comma-separated API keys | `dev-api-key` |
+| `CORS_ORIGIN` | Allowed CORS origins | `*` |
+
 ### Processing Thresholds
 
 | Threshold | Default | Description |
 |-----------|---------|-------------|
-| Auto-process | 0.85 | Auto-approve if confidence >= 85% |
-| Correction | 0.60 | Attempt correction if 60-85% |
-| Escalation | < 0.60 | Human review if < 60% |
+| `autoProcessThreshold` | 0.85 | Auto-approve if confidence ≥ 85% |
+| `correctionThreshold` | 0.60 | Attempt correction if 60-85% |
+| `maxCorrectionAttempts` | 3 | Max correction retries |
 
-### Mock Data (Development)
+---
 
-The adjudication agent includes mock data for testing:
+## OpenAPI Specification
 
-- **Eligibility**: All members eligible by default
-- **Benefits**: $500 deductible, 20% coinsurance
-- **Fee Schedule**: Common CPT codes with allowed amounts
-- **Covered Procedures**: Standard E&M, labs, imaging
+A complete OpenAPI 3.0 specification is available at [`openapi.yaml`](./openapi.yaml).
+
+### Interactive Documentation
+
+👉 **[https://chief-builder.github.io/healthcare_claims_document_processing_workflow/](https://chief-builder.github.io/healthcare_claims_document_processing_workflow/)**
+
+### Local Swagger UI
+
+```bash
+docker run -p 8080:8080 \
+  -e SWAGGER_JSON=/spec/openapi.yaml \
+  -v $(pwd):/spec \
+  swaggerapi/swagger-ui
+```
+
+### Generate Client SDK
+
+```bash
+npx @openapitools/openapi-generator-cli generate \
+  -i openapi.yaml \
+  -g typescript-fetch \
+  -o ./generated-client
+```
 
 ---
 
