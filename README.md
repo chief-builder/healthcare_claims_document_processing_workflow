@@ -118,7 +118,7 @@ This system automates the end-to-end processing of healthcare claims documents (
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                           CLAIM PROCESSING FLOW                               │
+│                           CLAIM PROCESSING FLOW                              │
 └──────────────────────────────────────────────────────────────────────────────┘
 
     Document
@@ -142,15 +142,15 @@ This system automates the end-to-end processing of healthcare claims documents (
                       │ Retry                           │                    │ Human
                       │ (max 3)                         │                    │ Decision
                       ▼                                 ▼                    │
-               ┌───────────┐                     ┌───────────┐              │
-               │  FAILED   │                     │ COMPLETED │◄─────────────┘
+               ┌───────────┐                     ┌───────────┐               │
+               │  FAILED   │                     │ COMPLETED │◄─────────────-┘
                └───────────┘                     └───────────┘
                                                        │
                                                        ▼
-                                                 ┌───────────┐
-                                                 │RAG INDEX  │
+                                                 ┌───────────-┐
+                                                 │RAG INDEX   │
                                                  │(Searchable)│
-                                                 └───────────┘
+                                                 └───────────-┘
 ```
 
 ### Status Transitions
