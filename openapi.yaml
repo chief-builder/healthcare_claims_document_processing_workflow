@@ -1,0 +1,1422 @@
+openapi: 3.0.3
+info:
+  title: Healthcare Claims IDP API
+  description: |
+    RESTful API for the Healthcare Claims Intelligent Document Processing (IDP) system.
+
+    This API provides endpoints for:
+    - Document upload and claim processing
+    - Claim status and results retrieval
+    - Human review queue management
+    - Natural language queries (RAG)
+
+    ## Authentication
+    All endpoints except health checks require API key authentication.
+    Use either:
+    - `Authorization: Bearer <api-key>` header
+    - `X-API-Key: <api-key>` header
+
+    ## Rate Limits
+    - **Strict**: 20 requests/15 min (document upload)
+    - **Default**: 100 requests/15 min
+    - **Lenient**: 500 requests/15 min
+    - **Query**: 30 requests/15 min (LLM operations)
+  version: 1.0.0
+  contact:
+    name: Healthcare Claims IDP Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3000/api
+    description: Local development server
+
+tags:
+  - name: Health
+    description: Health check endpoints
+  - name: Claims
+    description: Claim submission and retrieval
+  - name: Review
+    description: Human review queue management
+  - name: Query
+    description: RAG-powered natural language queries
+
+paths:
+  # ============================================================================
+  # Health Endpoints
+  # ============================================================================
+  /health:
+    get:
+      tags: [Health]
+      summary: Basic health check
+      description: Returns basic server health status
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                success: true
+                status: healthy
+                timestamp: "2025-12-15T00:00:00.000Z"
+                uptime: 120.5
+
+  /health/detailed:
+    get:
+      tags: [Health]
+      summary: Detailed health check
+      description: Returns detailed health status with component information
+      operationId: getDetailedHealth
+      security: []
+      responses:
+        '200':
+          description: Detailed health information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailedHealthResponse'
+
+  /health/ready:
+    get:
+      tags: [Health]
+      summary: Readiness probe
+      description: Kubernetes readiness probe - checks if services are initialized
+      operationId: getReadiness
+      security: []
+      responses:
+        '200':
+          description: Server is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready:
+                    type: boolean
+                    example: true
+        '503':
+          description: Server is not ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: Services not initialized
+
+  /health/live:
+    get:
+      tags: [Health]
+      summary: Liveness probe
+      description: Kubernetes liveness probe - checks if server is alive
+      operationId: getLiveness
+      security: []
+      responses:
+        '200':
+          description: Server is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alive:
+                    type: boolean
+                    example: true
+
+  # ============================================================================
+  # Claims Endpoints
+  # ============================================================================
+  /claims:
+    post:
+      tags: [Claims]
+      summary: Submit document for processing
+      description: |
+        Upload a healthcare claim document for automated processing.
+        Supports PNG, JPEG, TIFF, GIF, and PDF formats.
+
+        The document goes through:
+        1. Vision AI parsing
+        2. LLM-based field extraction
+        3. Validation (NPI, codes, dates)
+        4. Adjudication (approval/denial decision)
+      operationId: submitClaim
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [document]
+              properties:
+                document:
+                  type: string
+                  format: binary
+                  description: The claim document file
+                priority:
+                  type: string
+                  enum: [normal, high, urgent]
+                  default: normal
+                  description: Processing priority
+                metadata:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: Optional metadata key-value pairs
+      responses:
+        '201':
+          description: Document submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimSubmitResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+    get:
+      tags: [Claims]
+      summary: List claims
+      description: List all claims with optional filtering and pagination
+      operationId: listClaims
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/ClaimStatus'
+        - name: priority
+          in: query
+          schema:
+            $ref: '#/components/schemas/Priority'
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [createdAt, updatedAt, status, priority]
+            default: createdAt
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: fromDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: toDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: List of claims
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimsListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /claims/{id}:
+    get:
+      tags: [Claims]
+      summary: Get claim details
+      description: Get detailed information about a specific claim
+      operationId: getClaim
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+      responses:
+        '200':
+          description: Claim details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimDetailsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Claims]
+      summary: Delete a claim
+      description: Delete a claim and all associated data
+      operationId: deleteClaim
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+      responses:
+        '200':
+          description: Claim deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Claim CLM-123 deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /claims/{id}/extraction:
+    get:
+      tags: [Claims]
+      summary: Get extraction results
+      description: Get the extracted structured data from the claim document
+      operationId: getClaimExtraction
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+      responses:
+        '200':
+          description: Extraction results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtractionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /claims/{id}/validation:
+    get:
+      tags: [Claims]
+      summary: Get validation results
+      description: Get validation errors and warnings for the claim
+      operationId: getClaimValidation
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+      responses:
+        '200':
+          description: Validation results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /claims/{id}/adjudication:
+    get:
+      tags: [Claims]
+      summary: Get adjudication results
+      description: Get the adjudication decision (approval/denial) for the claim
+      operationId: getClaimAdjudication
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+      responses:
+        '200':
+          description: Adjudication results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdjudicationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /claims/{id}/history:
+    get:
+      tags: [Claims]
+      summary: Get processing history
+      description: Get the complete processing history for a claim
+      operationId: getClaimHistory
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+      responses:
+        '200':
+          description: Processing history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================================
+  # Review Queue Endpoints
+  # ============================================================================
+  /review-queue:
+    get:
+      tags: [Review]
+      summary: Get review queue
+      description: Get claims pending human review, sorted by priority
+      operationId: getReviewQueue
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: Review queue
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewQueueResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /review-queue/{id}:
+    get:
+      tags: [Review]
+      summary: Get review details
+      description: Get detailed information for a claim pending review
+      operationId: getReviewDetails
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+      responses:
+        '200':
+          description: Review details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewDetailsResponse'
+        '400':
+          description: Claim is not pending review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /review-queue/{id}/review:
+    post:
+      tags: [Review]
+      summary: Submit review decision
+      description: |
+        Submit a review decision for a pending claim.
+
+        Actions:
+        - **approve**: Continue to adjudication
+        - **reject**: Mark claim as failed
+        - **correct**: Apply corrections and re-validate
+      operationId: submitReview
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewDecision'
+      responses:
+        '200':
+          description: Review submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewResultResponse'
+        '400':
+          description: Invalid request or claim not pending review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /review-queue/stats/summary:
+    get:
+      tags: [Review]
+      summary: Get review statistics
+      description: Get summary statistics for the review queue
+      operationId: getReviewStats
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Review statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewStatsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============================================================================
+  # Query (RAG) Endpoints
+  # ============================================================================
+  /query:
+    post:
+      tags: [Query]
+      summary: Natural language query
+      description: Query claims using natural language with RAG
+      operationId: queryRAG
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+      responses:
+        '200':
+          description: Query results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /query/claims/{id}/similar:
+    get:
+      tags: [Query]
+      summary: Find similar claims
+      description: Find claims similar to a given claim using vector similarity
+      operationId: findSimilarClaims
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 5
+      responses:
+        '200':
+          description: Similar claims
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SimilarClaimsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /query/claims/{id}/index:
+    post:
+      tags: [Query]
+      summary: Index claim for RAG
+      description: Index a claim's extracted data for RAG queries
+      operationId: indexClaim
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ClaimId'
+      responses:
+        '200':
+          description: Claim indexed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Claim CLM-123 indexed successfully
+        '400':
+          description: Claim has not been extracted yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /query/stats:
+    get:
+      tags: [Query]
+      summary: Get RAG statistics
+      description: Get statistics about the RAG index
+      operationId: getRAGStats
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: RAG statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RAGStatsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Use `Authorization: Bearer <api-key>`
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Use `X-API-Key: <api-key>`
+
+  parameters:
+    ClaimId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^CLM-\d+-[A-F0-9]+$'
+      description: Claim ID (e.g., CLM-1765756746449-9B658184)
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: BAD_REQUEST
+              message: Invalid request body
+            timestamp: "2025-12-15T00:00:00.000Z"
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: UNAUTHORIZED
+              message: API key required
+            timestamp: "2025-12-15T00:00:00.000Z"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: NOT_FOUND
+              message: Claim CLM-123 not found
+            timestamp: "2025-12-15T00:00:00.000Z"
+
+    TooManyRequests:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: TOO_MANY_REQUESTS
+              message: Rate limit exceeded
+            timestamp: "2025-12-15T00:00:00.000Z"
+
+  schemas:
+    # ============================================================================
+    # Enums
+    # ============================================================================
+    ClaimStatus:
+      type: string
+      enum: [received, parsing, extracting, validating, correcting, pending_review, adjudicating, completed, failed]
+
+    Priority:
+      type: string
+      enum: [normal, high, urgent]
+
+    # ============================================================================
+    # Common Schemas
+    # ============================================================================
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: BAD_REQUEST
+            message:
+              type: string
+              example: Invalid request
+            details:
+              type: array
+              items:
+                type: object
+        timestamp:
+          type: string
+          format: date-time
+        requestId:
+          type: string
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 100
+        totalPages:
+          type: integer
+          example: 5
+
+    # ============================================================================
+    # Health Schemas
+    # ============================================================================
+    HealthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+        uptime:
+          type: number
+          description: Server uptime in seconds
+
+    DetailedHealthResponse:
+      allOf:
+        - $ref: '#/components/schemas/HealthResponse'
+        - type: object
+          properties:
+            memory:
+              type: object
+              properties:
+                used:
+                  type: integer
+                  example: 21
+                total:
+                  type: integer
+                  example: 23
+                unit:
+                  type: string
+                  example: MB
+            components:
+              type: object
+              properties:
+                stateManager:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                    totalClaims:
+                      type: integer
+                    claimsByStatus:
+                      type: object
+                      additionalProperties:
+                        type: integer
+                storage:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+            version:
+              type: string
+              example: "1.0.0"
+            nodeVersion:
+              type: string
+              example: "v20.13.1"
+
+    # ============================================================================
+    # Claims Schemas
+    # ============================================================================
+    ClaimSubmitResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            claimId:
+              type: string
+              example: CLM-1765756746449-9B658184
+            status:
+              $ref: '#/components/schemas/ClaimStatus'
+            processingTimeMs:
+              type: integer
+              example: 39510
+        message:
+          type: string
+          example: Document submitted for processing
+
+    ClaimsListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClaimSummary'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    ClaimSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          $ref: '#/components/schemas/ClaimStatus'
+        priority:
+          $ref: '#/components/schemas/Priority'
+        documentId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        hasExtractedClaim:
+          type: boolean
+        hasValidationResult:
+          type: boolean
+        hasAdjudicationResult:
+          type: boolean
+
+    ClaimDetailsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+            status:
+              $ref: '#/components/schemas/ClaimStatus'
+            priority:
+              $ref: '#/components/schemas/Priority'
+            documentId:
+              type: string
+            documentHash:
+              type: string
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+            processingHistory:
+              type: array
+              items:
+                $ref: '#/components/schemas/ProcessingHistoryItem'
+            metadata:
+              type: object
+              additionalProperties:
+                type: string
+
+    ProcessingHistoryItem:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/ClaimStatus'
+        timestamp:
+          type: string
+          format: date-time
+        message:
+          type: string
+
+    # ============================================================================
+    # Extraction Schemas
+    # ============================================================================
+    ExtractionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ExtractedClaim'
+
+    ExtractedClaim:
+      type: object
+      properties:
+        id:
+          type: string
+        documentType:
+          type: string
+          enum: [cms_1500, ub_04, eob, unknown]
+        patient:
+          $ref: '#/components/schemas/Patient'
+        provider:
+          $ref: '#/components/schemas/Provider'
+        diagnoses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnosis'
+        serviceLines:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceLine'
+        totals:
+          $ref: '#/components/schemas/ClaimTotals'
+        confidenceScores:
+          type: object
+          additionalProperties:
+            type: number
+            minimum: 0
+            maximum: 1
+
+    Patient:
+      type: object
+      properties:
+        memberId:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        dateOfBirth:
+          type: string
+          format: date
+        gender:
+          type: string
+          enum: [M, F, U]
+        address:
+          $ref: '#/components/schemas/Address'
+
+    Provider:
+      type: object
+      properties:
+        npi:
+          type: string
+          pattern: '^\d{10}$'
+        name:
+          type: string
+        taxId:
+          type: string
+        specialty:
+          type: string
+
+    Address:
+      type: object
+      properties:
+        street1:
+          type: string
+        street2:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        zipCode:
+          type: string
+        country:
+          type: string
+
+    Diagnosis:
+      type: object
+      properties:
+        code:
+          type: string
+          description: ICD-10 code
+        description:
+          type: string
+        isPrimary:
+          type: boolean
+
+    ServiceLine:
+      type: object
+      properties:
+        lineNumber:
+          type: integer
+        dateOfService:
+          type: string
+          format: date
+        procedureCode:
+          type: string
+          description: CPT/HCPCS code
+        modifiers:
+          type: array
+          items:
+            type: string
+        diagnosisPointers:
+          type: array
+          items:
+            type: string
+        units:
+          type: integer
+        chargeAmount:
+          type: number
+        placeOfService:
+          type: string
+
+    ClaimTotals:
+      type: object
+      properties:
+        totalCharges:
+          type: number
+        amountPaid:
+          type: number
+        patientResponsibility:
+          type: number
+
+    # ============================================================================
+    # Validation Schemas
+    # ============================================================================
+    ValidationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            isValid:
+              type: boolean
+            errors:
+              type: array
+              items:
+                $ref: '#/components/schemas/ValidationIssue'
+            warnings:
+              type: array
+              items:
+                $ref: '#/components/schemas/ValidationIssue'
+            overallConfidence:
+              type: number
+              minimum: 0
+              maximum: 1
+
+    ValidationIssue:
+      type: object
+      properties:
+        field:
+          type: string
+        errorType:
+          type: string
+          enum: [missing, format, syntax, semantic, reference]
+        message:
+          type: string
+        currentValue:
+          type: string
+        isCorrectable:
+          type: boolean
+
+    # ============================================================================
+    # Adjudication Schemas
+    # ============================================================================
+    AdjudicationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            claimId:
+              type: string
+            status:
+              type: string
+              enum: [approved, denied, partial]
+            lineDecisions:
+              type: array
+              items:
+                $ref: '#/components/schemas/LineDecision'
+            totals:
+              type: object
+              properties:
+                totalBilled:
+                  type: number
+                totalAllowed:
+                  type: number
+                totalPaid:
+                  type: number
+                totalPatientResponsibility:
+                  type: number
+            explanation:
+              type: string
+            policyCitations:
+              type: array
+              items:
+                type: string
+            decidedAt:
+              type: string
+              format: date-time
+            decidedBy:
+              type: string
+
+    LineDecision:
+      type: object
+      properties:
+        lineNumber:
+          type: integer
+        status:
+          type: string
+          enum: [approved, denied]
+        billedAmount:
+          type: number
+        allowedAmount:
+          type: number
+        paidAmount:
+          type: number
+        patientResponsibility:
+          type: number
+        denialReason:
+          type: string
+
+    # ============================================================================
+    # History Schemas
+    # ============================================================================
+    HistoryResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            claimId:
+              type: string
+            history:
+              type: array
+              items:
+                $ref: '#/components/schemas/ProcessingHistoryItem'
+
+    # ============================================================================
+    # Review Queue Schemas
+    # ============================================================================
+    ReviewQueueResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewQueueItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+        summary:
+          type: object
+          properties:
+            total:
+              type: integer
+            byPriority:
+              type: object
+              properties:
+                urgent:
+                  type: integer
+                high:
+                  type: integer
+                normal:
+                  type: integer
+
+    ReviewQueueItem:
+      type: object
+      properties:
+        claimId:
+          type: string
+        priority:
+          $ref: '#/components/schemas/Priority'
+        createdAt:
+          type: string
+          format: date-time
+        waitingTime:
+          type: integer
+          description: Waiting time in milliseconds
+        documentType:
+          type: string
+        patientName:
+          type: string
+        totalCharges:
+          type: number
+        validationErrors:
+          type: integer
+        validationWarnings:
+          type: integer
+
+    ReviewDetailsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            claim:
+              $ref: '#/components/schemas/ClaimSummary'
+            extraction:
+              $ref: '#/components/schemas/ExtractedClaim'
+            validation:
+              type: object
+            reviewActions:
+              type: array
+              items:
+                type: string
+                enum: [approve, reject, correct]
+
+    ReviewDecision:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [approve, reject, correct]
+        corrections:
+          type: object
+          description: Required when action is 'correct'
+        reason:
+          type: string
+          description: Required when action is 'reject'
+
+    ReviewResultResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            claimId:
+              type: string
+            action:
+              type: string
+              enum: [approve, reject, correct]
+            finalStatus:
+              $ref: '#/components/schemas/ClaimStatus'
+            processingTimeMs:
+              type: integer
+        message:
+          type: string
+        error:
+          type: string
+
+    ReviewStatsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            pendingReviewCount:
+              type: integer
+            averageWaitTimeMs:
+              type: integer
+            averageConfidence:
+              type: number
+            oldestPendingMs:
+              type: integer
+            byPriority:
+              type: object
+              properties:
+                urgent:
+                  type: integer
+                high:
+                  type: integer
+                normal:
+                  type: integer
+            totalProcessed:
+              type: integer
+            completedCount:
+              type: integer
+            failedCount:
+              type: integer
+
+    # ============================================================================
+    # Query (RAG) Schemas
+    # ============================================================================
+    QueryRequest:
+      type: object
+      required: [question]
+      properties:
+        question:
+          type: string
+          minLength: 3
+          maxLength: 1000
+          example: What diabetes-related claims have been processed?
+        maxChunks:
+          type: integer
+          minimum: 1
+          maximum: 10
+          default: 5
+        claimId:
+          type: string
+          description: Filter to specific claim
+        documentId:
+          type: string
+          description: Filter to specific document
+
+    QueryResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            answer:
+              type: string
+            confidence:
+              type: number
+              minimum: 0
+              maximum: 1
+            sources:
+              type: array
+              items:
+                type: object
+                properties:
+                  claimId:
+                    type: string
+                  documentId:
+                    type: string
+                  relevance:
+                    type: number
+                  snippet:
+                    type: string
+
+    SimilarClaimsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            claimId:
+              type: string
+            similarClaims:
+              type: array
+              items:
+                type: object
+                properties:
+                  claimId:
+                    type: string
+                  similarity:
+                    type: number
+                    minimum: 0
+                    maximum: 1
+
+    RAGStatsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            indexedClaims:
+              type: integer
+            totalChunks:
+              type: integer
