@@ -17,6 +17,26 @@ import { useReviewDetails, useSubmitReview } from '../../hooks/useClaims';
 import { useClaimSubscription } from '../../hooks/useSocket';
 import { PriorityBadge, ConfidenceIndicator } from '../common/StatusBadge';
 
+/**
+ * Calculate overall confidence score from a record of field-level scores
+ */
+function calculateOverallConfidence(scores: Record<string, number> | undefined): number {
+  if (!scores || typeof scores !== 'object') return 0;
+  const values = Object.values(scores).filter((v) => typeof v === 'number');
+  if (values.length === 0) return 0;
+  return values.reduce((sum, v) => sum + v, 0) / values.length;
+}
+
+/**
+ * Get category-specific confidence (patient, provider, services)
+ */
+function getCategoryConfidence(scores: Record<string, number> | undefined, prefix: string): number {
+  if (!scores || typeof scores !== 'object') return 0;
+  const entries = Object.entries(scores).filter(([key]) => key.startsWith(prefix));
+  if (entries.length === 0) return calculateOverallConfidence(scores); // Fallback to overall
+  return entries.reduce((sum, [, v]) => sum + v, 0) / entries.length;
+}
+
 export function ReviewDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -102,7 +122,7 @@ export function ReviewDetail() {
             <div className="card">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold">Extracted Data</h2>
-                <ConfidenceIndicator score={extraction.confidenceScores.overall} />
+                <ConfidenceIndicator score={calculateOverallConfidence(extraction.confidenceScores)} />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -154,7 +174,7 @@ export function ReviewDetail() {
                           <th className="px-3 py-2 text-left">#</th>
                           <th className="px-3 py-2 text-left">Date</th>
                           <th className="px-3 py-2 text-left">CPT</th>
-                          <th className="px-3 py-2 text-left">Description</th>
+                          <th className="px-3 py-2 text-left">Units</th>
                           <th className="px-3 py-2 text-right">Amount</th>
                         </tr>
                       </thead>
@@ -164,9 +184,9 @@ export function ReviewDetail() {
                             <td className="px-3 py-2">{line.lineNumber}</td>
                             <td className="px-3 py-2">{line.dateOfService}</td>
                             <td className="px-3 py-2 font-mono">{line.procedureCode}</td>
-                            <td className="px-3 py-2">{line.description}</td>
+                            <td className="px-3 py-2">{line.units}</td>
                             <td className="px-3 py-2 text-right font-medium">
-                              ${line.chargeAmount.toFixed(2)}
+                              ${(line.chargeAmount ?? 0).toFixed(2)}
                             </td>
                           </tr>
                         ))}
@@ -177,7 +197,7 @@ export function ReviewDetail() {
                             Total Charges
                           </td>
                           <td className="px-3 py-2 text-right">
-                            ${extraction.totals.totalCharges.toFixed(2)}
+                            ${(extraction.totals?.totalCharges ?? 0).toFixed(2)}
                           </td>
                         </tr>
                       </tfoot>
@@ -349,28 +369,28 @@ export function ReviewDetail() {
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">Overall</span>
                   <ConfidenceIndicator
-                    score={extraction.confidenceScores.overall}
+                    score={calculateOverallConfidence(extraction.confidenceScores)}
                     showLabel={false}
                   />
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">Patient</span>
                   <ConfidenceIndicator
-                    score={extraction.confidenceScores.patient}
+                    score={getCategoryConfidence(extraction.confidenceScores, 'patient')}
                     showLabel={false}
                   />
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">Provider</span>
                   <ConfidenceIndicator
-                    score={extraction.confidenceScores.provider}
+                    score={getCategoryConfidence(extraction.confidenceScores, 'provider')}
                     showLabel={false}
                   />
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">Services</span>
                   <ConfidenceIndicator
-                    score={extraction.confidenceScores.services}
+                    score={getCategoryConfidence(extraction.confidenceScores, 'serviceLines')}
                     showLabel={false}
                   />
                 </div>

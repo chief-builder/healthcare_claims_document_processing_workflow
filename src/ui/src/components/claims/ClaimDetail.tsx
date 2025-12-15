@@ -14,6 +14,16 @@ import {
 import { useClaimSubscription } from '../../hooks/useSocket';
 import { StatusBadge, PriorityBadge, ConfidenceIndicator } from '../common/StatusBadge';
 
+/**
+ * Calculate overall confidence score from a record of field-level scores
+ */
+function calculateOverallConfidence(scores: Record<string, number> | undefined): number {
+  if (!scores || typeof scores !== 'object') return 0;
+  const values = Object.values(scores).filter((v) => typeof v === 'number');
+  if (values.length === 0) return 0;
+  return values.reduce((sum, v) => sum + v, 0) / values.length;
+}
+
 export function ClaimDetail() {
   const { id } = useParams<{ id: string }>();
   useClaimSubscription(id);
@@ -143,7 +153,7 @@ export function ClaimDetail() {
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Extracted Data</h2>
-            <ConfidenceIndicator score={extraction.confidenceScores.overall} />
+            <ConfidenceIndicator score={calculateOverallConfidence(extraction.confidenceScores)} />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -193,7 +203,7 @@ export function ClaimDetail() {
                       <th className="px-3 py-2 text-left">#</th>
                       <th className="px-3 py-2 text-left">Date</th>
                       <th className="px-3 py-2 text-left">Code</th>
-                      <th className="px-3 py-2 text-left">Description</th>
+                      <th className="px-3 py-2 text-left">Units</th>
                       <th className="px-3 py-2 text-right">Amount</th>
                     </tr>
                   </thead>
@@ -203,9 +213,9 @@ export function ClaimDetail() {
                         <td className="px-3 py-2">{line.lineNumber}</td>
                         <td className="px-3 py-2">{line.dateOfService}</td>
                         <td className="px-3 py-2 font-mono">{line.procedureCode}</td>
-                        <td className="px-3 py-2">{line.description}</td>
+                        <td className="px-3 py-2">{line.units}</td>
                         <td className="px-3 py-2 text-right">
-                          ${line.chargeAmount.toFixed(2)}
+                          ${(line.chargeAmount ?? 0).toFixed(2)}
                         </td>
                       </tr>
                     ))}
@@ -214,7 +224,7 @@ export function ClaimDetail() {
                     <tr className="border-t font-medium">
                       <td colSpan={4} className="px-3 py-2 text-right">Total</td>
                       <td className="px-3 py-2 text-right">
-                        ${extraction.totals.totalCharges.toFixed(2)}
+                        ${(extraction.totals?.totalCharges ?? 0).toFixed(2)}
                       </td>
                     </tr>
                   </tfoot>
