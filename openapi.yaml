@@ -646,12 +646,12 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: Use `Authorization: Bearer <api-key>`
+      description: "Use Authorization: Bearer <api-key>"
     apiKeyAuth:
       type: apiKey
       in: header
       name: X-API-Key
-      description: Use `X-API-Key: <api-key>`
+      description: "Use X-API-Key: <api-key>"
 
   parameters:
     ClaimId:
