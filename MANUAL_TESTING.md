@@ -1939,6 +1939,51 @@ All orchestrator tests have been verified and pass successfully:
 
 This section covers testing the RESTful API and WebSocket functionality implemented in Phase 11.
 
+### Automated Test Script (Recommended)
+
+For comprehensive testing, use the provided test script that covers all API scenarios:
+
+```bash
+# Make sure server is running first (in one terminal)
+npx tsx test-api.ts
+
+# In another terminal, run the comprehensive test
+./test-manual-api.sh
+```
+
+**The script tests all 10 categories:**
+1. Health endpoints (basic and detailed)
+2. Authentication (no key, invalid key, valid key)
+3. Document upload (5 different claim types with different priorities)
+4. Claims filtering and pagination
+5. Full pipeline results (extraction, validation, adjudication, history)
+6. Review queue operations and statistics
+7. Manual review workflows (approve/reject)
+8. Error handling (404, 400 responses)
+9. RAG query endpoints
+10. Final summary with all claim statuses
+
+**Sample Output (from actual test run):**
+```
+═══════════════════════════════════════════════════════════════
+  TEST SUMMARY
+═══════════════════════════════════════════════════════════════
+
+  Total claims created: 5
+  Claims pending review: 0
+
+  Claim IDs tested:
+    - CLM-1765756746449-9B658184: completed
+    - CLM-1765756786043-C5AAF20E: completed
+    - CLM-1765756824068-7243ECD8: completed
+    - CLM-1765756862929-881C6C76: completed
+    - CLM-1765756902100-BD1A4E98: completed
+
+✓ All tests completed!
+```
+
+---
+
 ### Quick Test Checklist
 
 Use this checklist to quickly verify the API is working correctly:
@@ -2050,23 +2095,35 @@ curl http://localhost:3000/api/health/detailed
 {
   "success": true,
   "status": "healthy",
-  "timestamp": "2025-12-14T06:00:00.000Z",
+  "timestamp": "2025-12-15T00:00:00.000Z",
   "uptime": 15.2,
   "memory": {
-    "used": 30,
-    "total": 50,
+    "used": 21,
+    "total": 23,
     "unit": "MB"
   },
   "components": {
     "stateManager": {
       "status": "healthy",
       "totalClaims": 0,
-      "claimsByStatus": {}
+      "claimsByStatus": {
+        "received": 0,
+        "parsing": 0,
+        "extracting": 0,
+        "validating": 0,
+        "correcting": 0,
+        "pending_review": 0,
+        "adjudicating": 0,
+        "completed": 0,
+        "failed": 0
+      }
     },
     "storage": {
       "status": "healthy"
     }
-  }
+  },
+  "version": "1.0.0",
+  "nodeVersion": "v20.13.1"
 }
 ```
 
@@ -2353,9 +2410,56 @@ curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims/CL
 curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx/extraction"
 ```
 
+**Expected Extraction Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "CLM-xxxxxx",
+    "documentType": "cms_1500",
+    "patient": {
+      "memberId": "MEM-TEST-001",
+      "firstName": "John",
+      "lastName": "Smith",
+      "dateOfBirth": "1975-03-15",
+      "address": { "street1": "123 Oak ST", "city": "Chicago", "state": "IL", "zipCode": "60601", "country": "US" }
+    },
+    "provider": { "npi": "1234567890", "name": "Dr. Sarah Johnson" },
+    "diagnoses": [{ "code": "E11.9", "description": "Type 2 Diabetes Mellitus", "isPrimary": true }],
+    "serviceLines": [{ "lineNumber": 1, "dateOfService": "2024-12-01", "procedureCode": "99213", "chargeAmount": 150 }],
+    "totals": { "totalCharges": 150 },
+    "confidenceScores": {
+      "patient.memberId": 0.95,
+      "patient.firstName": 0.95,
+      "provider.npi": 0.95,
+      "diagnoses.0.code": 0.95,
+      "serviceLines.0.procedureCode": 0.95,
+      "totals.totalCharges": 0.95
+    }
+  }
+}
+```
+
 **Get validation results:**
 ```bash
 curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx/validation"
+```
+
+**Expected Validation Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "isValid": false,
+    "errors": [
+      { "field": "provider.npi", "errorType": "syntax", "message": "NPI checksum is invalid", "currentValue": "1234567890", "isCorrectable": true }
+    ],
+    "warnings": [
+      { "field": "serviceLines.0.chargeAmount", "errorType": "semantic", "message": "Charge amount appears low for CPT 99213", "isCorrectable": false }
+    ],
+    "overallConfidence": 0.785
+  }
+}
 ```
 
 **Get adjudication results:**
@@ -2363,9 +2467,43 @@ curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims/CL
 curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx/adjudication"
 ```
 
+**Expected Adjudication Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "claimId": "CLM-xxxxxx",
+    "status": "approved",
+    "lineDecisions": [{ "lineNumber": 1, "status": "approved", "billedAmount": 150, "allowedAmount": 125, "paidAmount": 0, "patientResponsibility": 125 }],
+    "totals": { "totalBilled": 150, "totalAllowed": 125, "totalPaid": 0, "totalPatientResponsibility": 125 },
+    "explanation": "All service lines have been approved for payment based on member eligibility and plan coverage.",
+    "decidedAt": "2025-12-14T23:59:45.786Z",
+    "decidedBy": "system"
+  }
+}
+```
+
 **Get processing history:**
 ```bash
 curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/claims/CLM-xxxxxx/history"
+```
+
+**Expected History Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "claimId": "CLM-xxxxxx",
+    "history": [
+      { "status": "received", "timestamp": "2025-12-14T23:59:06.462Z", "message": "Claim received" },
+      { "status": "parsing", "timestamp": "2025-12-14T23:59:06.463Z", "message": "Parsing document with Vision AI" },
+      { "status": "extracting", "timestamp": "2025-12-14T23:59:29.640Z", "message": "Extracting fields with Claude" },
+      { "status": "validating", "timestamp": "2025-12-14T23:59:37.324Z", "message": "Starting validation" },
+      { "status": "adjudicating", "timestamp": "2025-12-14T23:59:45.783Z", "message": "Starting adjudication" },
+      { "status": "completed", "timestamp": "2025-12-14T23:59:45.792Z", "message": "Processing completed" }
+    ]
+  }
+}
 ```
 
 **Delete a claim:**
@@ -2446,12 +2584,40 @@ curl -X POST "http://localhost:3000/api/review-queue/CLM-xxxxxx/review" \
   -d '{"action": "approve"}'
 ```
 
+**Expected Response (approve):**
+```json
+{
+  "success": true,
+  "data": {
+    "claimId": "CLM-xxxxxx",
+    "action": "approve",
+    "finalStatus": "completed",
+    "processingTimeMs": 2
+  },
+  "message": "Review approve completed successfully"
+}
+```
+
 **Submit a review decision (reject with reason):**
 ```bash
 curl -X POST "http://localhost:3000/api/review-queue/CLM-xxxxxx/review" \
   -H "Authorization: Bearer dev-api-key" \
   -H "Content-Type: application/json" \
   -d '{"action": "reject", "reason": "Invalid documentation"}'
+```
+
+**Expected Response (reject):**
+```json
+{
+  "success": true,
+  "data": {
+    "claimId": "CLM-xxxxxx",
+    "action": "reject",
+    "finalStatus": "failed",
+    "processingTimeMs": 1
+  },
+  "message": "Review reject completed successfully"
+}
 ```
 
 **Submit a review decision (correct with changes):**
@@ -2468,6 +2634,20 @@ curl -X POST "http://localhost:3000/api/review-queue/CLM-xxxxxx/review" \
     },
     "reason": "Fixed member ID"
   }'
+```
+
+**Expected Response (correct):**
+```json
+{
+  "success": true,
+  "data": {
+    "claimId": "CLM-xxxxxx",
+    "action": "correct",
+    "finalStatus": "completed",
+    "processingTimeMs": 150
+  },
+  "message": "Review correct completed successfully"
+}
 ```
 
 ---
@@ -2487,14 +2667,20 @@ curl -X POST "http://localhost:3000/api/query" \
 {
   "success": true,
   "data": {
-    "answer": "Based on the indexed claims...",
+    "answer": "Based on the provided context, there are at least 5 diabetes-related claims that have been processed. All claims contain diabetes diagnoses with ICD-10 codes starting with 'E11' (Type 2 diabetes mellitus)...",
     "confidence": 0.85,
     "sources": [
       {
-        "claimId": "CLM-xxxxxx",
-        "documentId": "DOC-xxxxxx",
-        "relevance": 0.92,
-        "snippet": "..."
+        "claimId": "STRUCTURED-E2E-001",
+        "documentId": "claim_STRUCTURED-E2E-001",
+        "relevance": 0.73,
+        "snippet": "Healthcare Claim: STRUCTURED-E2E-001\nDocument Type: cms_1500\n## Patient Information\nMember ID: MEM-STRUCT-12345..."
+      },
+      {
+        "claimId": "CLM-1765682436278-410BCA10",
+        "documentId": "claim_CLM-1765682436278-410BCA10",
+        "relevance": 0.72,
+        "snippet": "Specialty: Internal Medicine\n## Diagnoses\n1. E11.9 - Type 2 Diabetes (Primary)..."
       }
     ]
   }
@@ -2503,7 +2689,22 @@ curl -X POST "http://localhost:3000/api/query" \
 
 **Find similar claims:**
 ```bash
-curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/query/claims/CLM-xxxxxx/similar?limit=5"
+curl -H "Authorization: Bearer dev-api-key" "http://localhost:3000/api/query/claims/CLM-xxxxxx/similar?limit=3"
+```
+
+**Expected Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "claimId": "CLM-1765756746449-9B658184",
+    "similarClaims": [
+      { "claimId": "CLM-1765755639550-AE4F71A4", "similarity": 0.99 },
+      { "claimId": "CLM-1765754509023-9F86C9B8", "similarity": 0.99 },
+      { "claimId": "CLM-1765756942988-26F39500", "similarity": 0.96 }
+    ]
+  }
+}
 ```
 
 **Index a claim for RAG:**
