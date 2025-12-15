@@ -15,6 +15,7 @@ An intelligent document processing (IDP) system for healthcare claims using AI-p
 - [Testing](#testing)
 - [API Reference](#api-reference)
 - [Configuration](#configuration)
+- [OpenAPI Specification](#openapi-specification)
 
 ---
 
@@ -536,43 +537,194 @@ Place a CMS-1500 claim image at `test-claim.png` for vision tests.
 
 ## API Reference
 
-### Configuration
+The system provides a RESTful API with WebSocket support. Full OpenAPI 3.0 specification available in [`openapi.yaml`](./openapi.yaml).
 
-Environment variables (`.env`):
+### Starting the Server
 
 ```bash
-# Authentication (choose one)
-CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token    # For Claude Agent SDK
-ANTHROPIC_API_KEY=your-api-key              # For Vision (multimodal)
+# Start the API server
+npx tsx test-api.ts
 
-# Application
-NODE_ENV=development
-LOG_LEVEL=info
-
-# Processing thresholds
-AUTO_PROCESS_CONFIDENCE_THRESHOLD=0.85
-CORRECTION_CONFIDENCE_THRESHOLD=0.6
+# Server runs on http://localhost:3000
 ```
 
-### Validation Codes
+### Authentication
 
-The system includes reference databases for:
+All endpoints except health checks require API key authentication:
 
-- **ICD-10**: 34 common diagnosis codes
-- **CPT**: 46 common procedure codes
-- **HCPCS**: 35 common supply/drug codes
-- **POS**: Place of service codes
+```bash
+# Using Bearer token (recommended)
+curl -H "Authorization: Bearer dev-api-key" http://localhost:3000/api/claims
 
-### Adjudication Logic
+# Using X-API-Key header
+curl -H "X-API-Key: dev-api-key" http://localhost:3000/api/claims
+```
 
-1. **Eligibility Check**: Verify member is active
-2. **Coverage Check**: Verify procedure is covered
-3. **Fee Schedule**: Look up allowed amount
-4. **Benefits Calculation**:
-   - Apply deductible (remaining portion)
-   - Apply copay (if applicable)
-   - Apply coinsurance (% after deductible)
-5. **Payment Determination**: Plan paid = Allowed - Patient responsibility
+| Environment | API Key | Configuration |
+|-------------|---------|---------------|
+| Development | `dev-api-key` | Default |
+| Production | Custom | Set `API_KEYS` env var |
+
+### API Endpoints
+
+#### Health Endpoints
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/api/health` | Basic health check | No |
+| GET | `/api/health/detailed` | Detailed health with components | No |
+| GET | `/api/health/ready` | Kubernetes readiness probe | No |
+| GET | `/api/health/live` | Kubernetes liveness probe | No |
+
+#### Claims Endpoints
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| POST | `/api/claims` | Submit document for processing | Yes |
+| GET | `/api/claims` | List claims with filtering | Yes |
+| GET | `/api/claims/:id` | Get claim details | Yes |
+| GET | `/api/claims/:id/extraction` | Get extraction results | Yes |
+| GET | `/api/claims/:id/validation` | Get validation results | Yes |
+| GET | `/api/claims/:id/adjudication` | Get adjudication decision | Yes |
+| GET | `/api/claims/:id/history` | Get processing history | Yes |
+| DELETE | `/api/claims/:id` | Delete a claim | Yes |
+
+#### Review Queue Endpoints
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/api/review-queue` | Get claims pending review | Yes |
+| GET | `/api/review-queue/:id` | Get review details | Yes |
+| POST | `/api/review-queue/:id/review` | Submit review decision | Yes |
+| GET | `/api/review-queue/stats/summary` | Get review statistics | Yes |
+
+#### Query (RAG) Endpoints
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| POST | `/api/query` | Natural language query | Yes |
+| GET | `/api/query/claims/:id/similar` | Find similar claims | Yes |
+| POST | `/api/query/claims/:id/index` | Index claim for RAG | Yes |
+| GET | `/api/query/stats` | Get RAG statistics | Yes |
+
+### Rate Limits
+
+| Type | Limit | Applies To |
+|------|-------|------------|
+| **Strict** | 20 req/15 min | Document upload |
+| **Query** | 30 req/15 min | LLM operations |
+| **Default** | 100 req/15 min | Standard endpoints |
+| **Lenient** | 500 req/15 min | Read operations |
+
+### Quick Examples
+
+**Submit a claim:**
+```bash
+curl -X POST http://localhost:3000/api/claims \
+  -H "Authorization: Bearer dev-api-key" \
+  -F "document=@test-data/claim-diabetes-routine.png" \
+  -F "priority=normal"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "claimId": "CLM-1765756746449-9B658184",
+    "status": "completed",
+    "processingTimeMs": 39510
+  },
+  "message": "Document submitted for processing"
+}
+```
+
+**Get validation results:**
+```bash
+curl -H "Authorization: Bearer dev-api-key" \
+  "http://localhost:3000/api/claims/CLM-xxx/validation"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "isValid": false,
+    "errors": [
+      {"field": "provider.npi", "message": "NPI checksum is invalid", "isCorrectable": true}
+    ],
+    "warnings": [
+      {"field": "serviceLines.0.chargeAmount", "message": "Charge amount appears low for CPT 99213"}
+    ],
+    "overallConfidence": 0.785
+  }
+}
+```
+
+**Submit review decision:**
+```bash
+curl -X POST "http://localhost:3000/api/review-queue/CLM-xxx/review" \
+  -H "Authorization: Bearer dev-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"action": "approve"}'
+```
+
+**Natural language query:**
+```bash
+curl -X POST "http://localhost:3000/api/query" \
+  -H "Authorization: Bearer dev-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What diabetes-related claims have been processed?", "maxChunks": 5}'
+```
+
+### Manual Testing
+
+A comprehensive test script is provided:
+
+```bash
+# Run all API tests
+./test-manual-api.sh
+```
+
+See [`MANUAL_TESTING.md`](./MANUAL_TESTING.md) Section 8 for detailed testing instructions.
+
+---
+
+## OpenAPI Specification
+
+A complete OpenAPI 3.0 specification is available at [`openapi.yaml`](./openapi.yaml). This specification includes:
+
+- All API endpoints with request/response schemas
+- Authentication methods (Bearer token, API key)
+- Rate limiting documentation
+- Error response formats
+- Example requests and responses
+
+### Using the Specification
+
+**View in Swagger UI:**
+```bash
+# Using Docker
+docker run -p 8080:8080 -e SWAGGER_JSON=/spec/openapi.yaml -v $(pwd):/spec swaggerapi/swagger-ui
+
+# Open http://localhost:8080
+```
+
+**Generate Client SDKs:**
+```bash
+# Using OpenAPI Generator
+npx @openapitools/openapi-generator-cli generate \
+  -i openapi.yaml \
+  -g typescript-fetch \
+  -o ./generated-client
+```
+
+**Import into Postman:**
+1. Open Postman
+2. Click Import → File
+3. Select `openapi.yaml`
+4. All endpoints will be imported with examples
 
 ---
 
