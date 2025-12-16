@@ -285,36 +285,42 @@ export function ClaimDetail() {
           <div className="flex items-center gap-4 mb-4">
             <span
               className={`badge ${
-                adjudication.decision === 'approved'
+                adjudication.status === 'approved'
                   ? 'badge-success'
-                  : adjudication.decision === 'denied'
+                  : adjudication.status === 'denied'
                   ? 'badge-danger'
                   : 'badge-warning'
               }`}
             >
-              {adjudication.decision.charAt(0).toUpperCase() + adjudication.decision.slice(1)}
+              {adjudication.status ? adjudication.status.charAt(0).toUpperCase() + adjudication.status.slice(1) : 'Unknown'}
             </span>
           </div>
 
           <dl className="space-y-3 mb-4">
             <div className="flex justify-between">
-              <dt className="text-gray-500">Approved Amount</dt>
-              <dd className="font-medium text-green-600">
-                ${adjudication.approvedAmount.toFixed(2)}
+              <dt className="text-gray-500">Total Billed</dt>
+              <dd className="font-medium">
+                ${(adjudication.totals?.totalBilled ?? 0).toFixed(2)}
               </dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-gray-500">Denied Amount</dt>
-              <dd className="font-medium text-red-600">
-                ${adjudication.deniedAmount.toFixed(2)}
+              <dt className="text-gray-500">Total Paid</dt>
+              <dd className="font-medium text-green-600">
+                ${(adjudication.totals?.totalPaid ?? 0).toFixed(2)}
+              </dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-gray-500">Patient Responsibility</dt>
+              <dd className="font-medium text-blue-600">
+                ${(adjudication.totals?.totalPatientResponsibility ?? 0).toFixed(2)}
               </dd>
             </div>
           </dl>
 
-          {adjudication.reasoning && (
+          {adjudication.explanation && (
             <div className="bg-gray-50 p-4 rounded">
-              <h3 className="font-medium mb-2">Reasoning</h3>
-              <p className="text-sm text-gray-700">{adjudication.reasoning}</p>
+              <h3 className="font-medium mb-2">Explanation</h3>
+              <p className="text-sm text-gray-700">{adjudication.explanation}</p>
             </div>
           )}
         </div>

@@ -99,11 +99,29 @@ export interface ValidationWarning {
 }
 
 export interface AdjudicationResult {
-  decision: 'approved' | 'denied' | 'partial';
-  approvedAmount: number;
-  deniedAmount: number;
-  adjustments: Adjustment[];
-  reasoning: string;
+  claimId?: string;
+  status: 'approved' | 'denied' | 'partial' | 'pending_review';
+  lineDecisions?: LineDecision[];
+  totals: {
+    totalBilled: number;
+    totalAllowed: number;
+    totalPaid: number;
+    totalPatientResponsibility: number;
+  };
+  explanation: string;
+  policyCitations?: string[];
+  decidedAt?: string;
+  decidedBy?: string;
+}
+
+export interface LineDecision {
+  lineNumber: number;
+  status: 'approved' | 'denied';
+  billedAmount: number;
+  allowedAmount: number;
+  paidAmount: number;
+  patientResponsibility: number;
+  denialReasons?: Array<{ code: string; description: string }>;
 }
 
 export interface Adjustment {
