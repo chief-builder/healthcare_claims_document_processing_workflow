@@ -31,9 +31,13 @@ export interface Claim {
 }
 
 export interface ProcessingStep {
-  stage: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'failed';
-  startedAt: string;
+  // Backend uses 'status' as the stage name (ClaimStatus value like 'received', 'parsing', etc.)
+  status: ClaimStatus;
+  timestamp: string;
+  message?: string;
+  // Legacy fields for backwards compatibility (not used by backend)
+  stage?: string;
+  startedAt?: string;
   completedAt?: string;
   error?: string;
   details?: Record<string, unknown>;

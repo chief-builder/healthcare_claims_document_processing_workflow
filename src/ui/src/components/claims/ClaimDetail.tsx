@@ -121,22 +121,24 @@ export function ClaimDetail() {
                   key={index}
                   className="flex items-start gap-3 text-sm"
                 >
-                  {step.status === 'completed' ? (
-                    <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
-                  ) : step.status === 'failed' ? (
+                  {step.status === 'failed' ? (
                     <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
+                  ) : step.status === 'completed' ? (
+                    <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
+                  ) : index < claim.processingHistory!.length - 1 ? (
+                    <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
                   ) : (
                     <Clock className="h-5 w-5 text-yellow-500 flex-shrink-0" />
                   )}
                   <div>
-                    <p className="font-medium capitalize">{step.stage}</p>
-                    {step.startedAt && (
+                    <p className="font-medium capitalize">{step.status.replace(/_/g, ' ')}</p>
+                    {step.timestamp && (
                       <p className="text-gray-500 text-xs">
-                        {format(new Date(step.startedAt), 'PPp')}
+                        {format(new Date(step.timestamp), 'PPp')}
                       </p>
                     )}
-                    {step.error && (
-                      <p className="text-red-600 text-xs mt-1">{step.error}</p>
+                    {step.message && (
+                      <p className="text-gray-600 text-xs mt-1">{step.message}</p>
                     )}
                   </div>
                 </div>
