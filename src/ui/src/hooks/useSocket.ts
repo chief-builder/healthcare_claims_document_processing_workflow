@@ -71,11 +71,11 @@ export function useSocket() {
       setConnected(false);
     });
 
-    // Event handlers
-    socket.on('claim:status_change', (data: {
+    // Event handlers - server emits 'claim:status_changed' with 'status' and 'previousStatus'
+    socket.on('claim:status_changed', (data: {
       claimId: string;
-      previousStatus: ClaimStatus;
-      newStatus: ClaimStatus;
+      previousStatus?: ClaimStatus;
+      status?: ClaimStatus;
       timestamp: string;
     }) => {
       console.log('Claim status changed:', data);
@@ -87,7 +87,7 @@ export function useSocket() {
         timestamp: data.timestamp,
         data: {
           previousStatus: data.previousStatus,
-          newStatus: data.newStatus,
+          newStatus: data.status,
         },
       });
 
@@ -95,7 +95,7 @@ export function useSocket() {
       queryClient.invalidateQueries({ queryKey: ['claims'] });
       queryClient.invalidateQueries({ queryKey: ['claim', data.claimId] });
 
-      if (data.newStatus === 'pending_review') {
+      if (data.status === 'pending_review') {
         queryClient.invalidateQueries({ queryKey: ['review-queue'] });
       }
     });

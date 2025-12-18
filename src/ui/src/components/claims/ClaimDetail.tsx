@@ -14,6 +14,16 @@ import {
 import { useClaimSubscription } from '../../hooks/useSocket';
 import { StatusBadge, PriorityBadge, ConfidenceIndicator } from '../common/StatusBadge';
 
+/**
+ * Calculate overall confidence score from a record of field-level scores
+ */
+function calculateOverallConfidence(scores: Record<string, number> | undefined): number {
+  if (!scores || typeof scores !== 'object') return 0;
+  const values = Object.values(scores).filter((v) => typeof v === 'number');
+  if (values.length === 0) return 0;
+  return values.reduce((sum, v) => sum + v, 0) / values.length;
+}
+
 export function ClaimDetail() {
   const { id } = useParams<{ id: string }>();
   useClaimSubscription(id);
@@ -111,22 +121,24 @@ export function ClaimDetail() {
                   key={index}
                   className="flex items-start gap-3 text-sm"
                 >
-                  {step.status === 'completed' ? (
-                    <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
-                  ) : step.status === 'failed' ? (
+                  {step.status === 'failed' ? (
                     <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
+                  ) : step.status === 'completed' ? (
+                    <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
+                  ) : index < claim.processingHistory!.length - 1 ? (
+                    <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
                   ) : (
                     <Clock className="h-5 w-5 text-yellow-500 flex-shrink-0" />
                   )}
                   <div>
-                    <p className="font-medium capitalize">{step.stage}</p>
-                    {step.startedAt && (
+                    <p className="font-medium capitalize">{step.status.replace(/_/g, ' ')}</p>
+                    {step.timestamp && (
                       <p className="text-gray-500 text-xs">
-                        {format(new Date(step.startedAt), 'PPp')}
+                        {format(new Date(step.timestamp), 'PPp')}
                       </p>
                     )}
-                    {step.error && (
-                      <p className="text-red-600 text-xs mt-1">{step.error}</p>
+                    {step.message && (
+                      <p className="text-gray-600 text-xs mt-1">{step.message}</p>
                     )}
                   </div>
                 </div>
@@ -143,7 +155,7 @@ export function ClaimDetail() {
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Extracted Data</h2>
-            <ConfidenceIndicator score={extraction.confidenceScores.overall} />
+            <ConfidenceIndicator score={calculateOverallConfidence(extraction.confidenceScores)} />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -193,7 +205,7 @@ export function ClaimDetail() {
                       <th className="px-3 py-2 text-left">#</th>
                       <th className="px-3 py-2 text-left">Date</th>
                       <th className="px-3 py-2 text-left">Code</th>
-                      <th className="px-3 py-2 text-left">Description</th>
+                      <th className="px-3 py-2 text-left">Units</th>
                       <th className="px-3 py-2 text-right">Amount</th>
                     </tr>
                   </thead>
@@ -203,9 +215,9 @@ export function ClaimDetail() {
                         <td className="px-3 py-2">{line.lineNumber}</td>
                         <td className="px-3 py-2">{line.dateOfService}</td>
                         <td className="px-3 py-2 font-mono">{line.procedureCode}</td>
-                        <td className="px-3 py-2">{line.description}</td>
+                        <td className="px-3 py-2">{line.units}</td>
                         <td className="px-3 py-2 text-right">
-                          ${line.chargeAmount.toFixed(2)}
+                          ${(line.chargeAmount ?? 0).toFixed(2)}
                         </td>
                       </tr>
                     ))}
@@ -214,7 +226,7 @@ export function ClaimDetail() {
                     <tr className="border-t font-medium">
                       <td colSpan={4} className="px-3 py-2 text-right">Total</td>
                       <td className="px-3 py-2 text-right">
-                        ${extraction.totals.totalCharges.toFixed(2)}
+                        ${(extraction.totals?.totalCharges ?? 0).toFixed(2)}
                       </td>
                     </tr>
                   </tfoot>
@@ -275,36 +287,42 @@ export function ClaimDetail() {
           <div className="flex items-center gap-4 mb-4">
             <span
               className={`badge ${
-                adjudication.decision === 'approved'
+                adjudication.status === 'approved'
                   ? 'badge-success'
-                  : adjudication.decision === 'denied'
+                  : adjudication.status === 'denied'
                   ? 'badge-danger'
                   : 'badge-warning'
               }`}
             >
-              {adjudication.decision.charAt(0).toUpperCase() + adjudication.decision.slice(1)}
+              {adjudication.status ? adjudication.status.charAt(0).toUpperCase() + adjudication.status.slice(1) : 'Unknown'}
             </span>
           </div>
 
           <dl className="space-y-3 mb-4">
             <div className="flex justify-between">
-              <dt className="text-gray-500">Approved Amount</dt>
-              <dd className="font-medium text-green-600">
-                ${adjudication.approvedAmount.toFixed(2)}
+              <dt className="text-gray-500">Total Billed</dt>
+              <dd className="font-medium">
+                ${(adjudication.totals?.totalBilled ?? 0).toFixed(2)}
               </dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-gray-500">Denied Amount</dt>
-              <dd className="font-medium text-red-600">
-                ${adjudication.deniedAmount.toFixed(2)}
+              <dt className="text-gray-500">Total Paid</dt>
+              <dd className="font-medium text-green-600">
+                ${(adjudication.totals?.totalPaid ?? 0).toFixed(2)}
+              </dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-gray-500">Patient Responsibility</dt>
+              <dd className="font-medium text-blue-600">
+                ${(adjudication.totals?.totalPatientResponsibility ?? 0).toFixed(2)}
               </dd>
             </div>
           </dl>
 
-          {adjudication.reasoning && (
+          {adjudication.explanation && (
             <div className="bg-gray-50 p-4 rounded">
-              <h3 className="font-medium mb-2">Reasoning</h3>
-              <p className="text-sm text-gray-700">{adjudication.reasoning}</p>
+              <h3 className="font-medium mb-2">Explanation</h3>
+              <p className="text-sm text-gray-700">{adjudication.explanation}</p>
             </div>
           )}
         </div>

@@ -31,15 +31,20 @@ export interface Claim {
 }
 
 export interface ProcessingStep {
-  stage: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'failed';
-  startedAt: string;
+  // Backend uses 'status' as the stage name (ClaimStatus value like 'received', 'parsing', etc.)
+  status: ClaimStatus;
+  timestamp: string;
+  message?: string;
+  // Legacy fields for backwards compatibility (not used by backend)
+  stage?: string;
+  startedAt?: string;
   completedAt?: string;
   error?: string;
   details?: Record<string, unknown>;
 }
 
 export interface ExtractedClaim {
+  id?: string;
   documentType: string;
   patient: {
     firstName: string;
@@ -60,22 +65,20 @@ export interface ExtractedClaim {
     amountPaid?: number;
     patientResponsibility?: number;
   };
-  confidenceScores: {
-    overall: number;
-    patient: number;
-    provider: number;
-    services: number;
-  };
+  // Backend stores confidence scores as Record<string, number> with keys like 'patient.firstName', etc.
+  confidenceScores: Record<string, number>;
 }
 
 export interface ServiceLine {
   lineNumber: number;
   dateOfService: string;
   procedureCode: string;
-  description: string;
-  quantity: number;
+  description?: string; // May not be present from backend
+  modifiers?: string[];
+  units: number; // Backend uses 'units' not 'quantity'
   chargeAmount: number;
-  diagnosisCodes: string[];
+  diagnosisPointers?: string[]; // Backend uses 'diagnosisPointers' not 'diagnosisCodes'
+  placeOfService?: string;
 }
 
 export interface ValidationResult {
@@ -100,11 +103,29 @@ export interface ValidationWarning {
 }
 
 export interface AdjudicationResult {
-  decision: 'approved' | 'denied' | 'partial';
-  approvedAmount: number;
-  deniedAmount: number;
-  adjustments: Adjustment[];
-  reasoning: string;
+  claimId?: string;
+  status: 'approved' | 'denied' | 'partial' | 'pending_review';
+  lineDecisions?: LineDecision[];
+  totals: {
+    totalBilled: number;
+    totalAllowed: number;
+    totalPaid: number;
+    totalPatientResponsibility: number;
+  };
+  explanation: string;
+  policyCitations?: string[];
+  decidedAt?: string;
+  decidedBy?: string;
+}
+
+export interface LineDecision {
+  lineNumber: number;
+  status: 'approved' | 'denied';
+  billedAmount: number;
+  allowedAmount: number;
+  paidAmount: number;
+  patientResponsibility: number;
+  denialReasons?: Array<{ code: string; description: string }>;
 }
 
 export interface Adjustment {
