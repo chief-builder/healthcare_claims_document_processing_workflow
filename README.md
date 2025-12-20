@@ -6,6 +6,17 @@
 
 An intelligent document processing (IDP) system for healthcare claims using AI-powered extraction, validation, and adjudication. Built with TypeScript and Claude AI.
 
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [FEATURES.md](./FEATURES.md) | Comprehensive list of implemented and tested features |
+| [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) | Original implementation plan with phase details |
+| [ENHANCEMENT_PLAN.md](./ENHANCEMENT_PLAN.md) | Planned non-functional enhancements |
+| [MANUAL_TESTING.md](./MANUAL_TESTING.md) | Manual testing procedures and results |
+| [UI_Manual_Testing_Plan.md](./UI_Manual_Testing_Plan.md) | UI testing procedures |
+| [OpenAPI Spec](./openapi.yaml) | Full API specification |
+
 ## Table of Contents
 
 - [Overview](#overview)
